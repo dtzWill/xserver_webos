@@ -30,6 +30,79 @@
 #include <SDL/SDL.h>
 #include <X11/keysym.h>
 
+#include <SDL/SDL_video.h>
+#include <SDL/SDL_opengles.h>
+#include "esFunc.h"
+
+#define WIDTH 320
+#define HEIGHT 480
+
+#define DEBUG_GL
+
+#ifdef DEBUG_GL
+static void checkError()
+{
+    /* Check for error conditions. */
+    GLenum gl_error = glGetError( );
+
+    if( gl_error != GL_NO_ERROR ) {
+        fprintf( stderr, "X sdlgl: OpenGL error: %x\n", gl_error );
+        while(1);
+        exit( 1 );
+    }
+
+    char * sdl_error = SDL_GetError( );
+
+    if( sdl_error[0] != '\0' ) {
+        fprintf(stderr, "X sdlgl: SDL error '%s'\n", sdl_error);
+        while(1);
+        exit( 2 );
+    }
+}
+#else
+#define checkError()
+#endif
+
+void GL_Init();
+void GL_InitTexture();
+void GL_Render();
+
+/*-----------------------------------------------------------------------------
+ *  GL variables
+ *-----------------------------------------------------------------------------*/
+GLuint texture = 0;
+
+// Handle to a program object
+GLuint programObject;
+
+// Attribute locations
+GLint  positionLoc;
+GLint  texCoordLoc;
+
+// Sampler location
+GLint samplerLoc;
+
+//We're doing one-to-one texture to screen anyway
+int gl_filter = GL_LINEAR;
+
+float vertexCoords[] =
+{
+    -1, 1,
+    -1, -1,
+    1, 1,
+    1, -1
+};
+
+float texCoords[] =
+{
+    0.0, 0.0,
+    0.0, 1.0,
+    1.0, 0.0,
+    1.0, 1.0
+};
+
+GLushort indices[] = { 0, 1, 2, 1, 2, 3 };
+
 static void xsdlFini(void);
 static Bool sdlScreenInit(KdScreenInfo *screen);
 static Bool sdlFinishInitScreen(ScreenPtr pScreen);
@@ -70,52 +143,66 @@ KdCardFuncs sdlFuncs = {
 
 int mouseState=0;
 
-struct SdlDriver
+struct SdlGLESDriver
 {
-	SDL_Surface *screen;
+    char * buffer;
+    //For now, I've hardcoded these
+    //int width;
+    //int height;
 };
 
 
 
 static Bool sdlScreenInit(KdScreenInfo *screen)
 {
-	struct SdlDriver *sdlDriver=calloc(1, sizeof(struct SdlDriver));
+	struct SdlGLESDriver *sdlGLESDriver=calloc(1, sizeof(struct SdlGLESDriver));
 #ifdef DEBUG
 	printf("sdlScreenInit()\n");
 #endif
-	if (!screen->width || !screen->height)
-	{
-		screen->width = 640;
-		screen->height = 480;
-	}
-	if (!screen->fb[0].depth)
-		screen->fb[0].depth = 4;
+
+    screen->width = WIDTH;
+    screen->height = HEIGHT;
+    screen->fb[0].depth = 24;
 #ifdef DEBUG
 	printf("Attempting for %dx%d/%dbpp mode\n", screen->width, screen->height, screen->fb[0].depth);
 #endif
-	sdlDriver->screen=SDL_SetVideoMode(screen->width, screen->height, screen->fb[0].depth, 0);
-	if(sdlDriver->screen==NULL)
+	SDL_Surface * s = SDL_SetVideoMode(screen->width, screen->height, screen->fb[0].depth, SDL_OPENGLES);
+	if( s == NULL )
 		return FALSE;
 #ifdef DEBUG
-	printf("Set %dx%d/%dbpp mode\n", sdlDriver->screen->w, sdlDriver->screen->h, sdlDriver->screen->format->BitsPerPixel);
+	printf("Set %dx%d/%dbpp mode\n", s->w, s->h, s->format->BitsPerPixel);
 #endif
-	screen->width=sdlDriver->screen->w;
-	screen->height=sdlDriver->screen->h;
-	screen->fb[0].depth=sdlDriver->screen->format->BitsPerPixel;
+    //XXX: Bail if we DONT get the expected (hard-coded) resolution.
+
+    //We're using 24 bitdepth, each color has it's own byte
+    //XXX: OKAY: I'll fix this out later.  Expect color issues.
+    int redMask = 0xff0000;
+    int greenMask = 0x00ff00;
+    int blueMask = 0x0000ff;
+
+    //Create buffer for rendering into
+    sdlGLESDriver->buffer = malloc( WIDTH*HEIGHT*24 / 8 );
+    screen->width=s->w;
+	screen->height=s->h;
+	screen->fb[0].depth= 24;
 	screen->fb[0].visuals=(1<<TrueColor);
-	screen->fb[0].redMask=sdlDriver->screen->format->Rmask;
-	screen->fb[0].greenMask=sdlDriver->screen->format->Gmask;
-	screen->fb[0].blueMask=sdlDriver->screen->format->Bmask;
-	screen->fb[0].bitsPerPixel=sdlDriver->screen->format->BitsPerPixel;
+	screen->fb[0].redMask=redMask;
+	screen->fb[0].greenMask=greenMask;
+	screen->fb[0].blueMask=blueMask;
+	screen->fb[0].bitsPerPixel= 24;
 	screen->rate=60;
-	screen->memory_base=(CARD8 *)sdlDriver->screen->pixels;
+	screen->memory_base=(CARD8 *)sdlGLESDriver->buffer;
 	screen->memory_size=0;
 	screen->off_screen_base=0;
-	screen->driver=sdlDriver;
-	screen->fb[0].byteStride=(sdlDriver->screen->w*sdlDriver->screen->format->BitsPerPixel)/8;
-	screen->fb[0].pixelStride=sdlDriver->screen->w;
-	screen->fb[0].frameBuffer=(CARD8 *)sdlDriver->screen->pixels;
-	SDL_WM_SetCaption("Freedesktop.org X server (SDL)", NULL);
+	screen->driver=sdlGLESDriver;
+	screen->fb[0].byteStride=(WIDTH*24)/8;
+	screen->fb[0].pixelStride=WIDTH;
+	screen->fb[0].frameBuffer=(CARD8 *)sdlGLESDriver->buffer;
+	SDL_WM_SetCaption("Freedesktop.org X server (SDLGLES)", NULL);
+
+    GL_Init();
+    GL_InitTexture();
+
 	return TRUE;
 }
 
@@ -123,37 +210,25 @@ void sdlShadowUpdate (ScreenPtr pScreen, shadowBufPtr pBuf)
 {
 	KdScreenPriv(pScreen);
 	KdScreenInfo *screen = pScreenPriv->screen;
-	struct SdlDriver *sdlDriver=screen->driver;
-#ifdef DEBUG
-	printf("Shadow update()\n");
-#endif
-	if(SDL_MUSTLOCK(sdlDriver->screen))
-	{
-		if(SDL_LockSurface(sdlDriver->screen)<0)
-		{
-#ifdef DEBUG
-			printf("Couldn't lock SDL surface - d'oh!\n");
-#endif
-			return;
-		}
-	}
+	struct SdlGLESDriver *sdlDriver=screen->driver;
 	
-	if(SDL_MUSTLOCK(sdlDriver->screen))
-		SDL_UnlockSurface(sdlDriver->screen);
-	SDL_UpdateRect(sdlDriver->screen, 0, 0, sdlDriver->screen->w, sdlDriver->screen->h);
+    GL_Render( sdlDriver );
 }
 
 
 void *sdlShadowWindow (ScreenPtr pScreen, CARD32 row, CARD32 offset, int mode, CARD32 *size, void *closure)
 {
-	KdScreenPriv(pScreen);
-	KdScreenInfo *screen = pScreenPriv->screen;
-	struct SdlDriver *sdlDriver=screen->driver;
-	*size=(sdlDriver->screen->w*sdlDriver->screen->format->BitsPerPixel)/8;
+    fprintf( stderr, "No one calls this, right?!\n" );
+    exit( -1 );
+    return NULL;
+	//KdScreenPriv(pScreen);
+	//KdScreenInfo *screen = pScreenPriv->screen;
+	//struct SdlDriver *sdlDriver=screen->driver;
+	//*size=(sdlDriver->screen->w*sdlDriver->screen->format->BitsPerPixel)/8;
 #ifdef DEBUG
-	printf("Shadow window()\n");
+	//printf("Shadow window()\n");
 #endif
-	return (void *)((CARD8 *)sdlDriver->screen->pixels + row * (*size) + offset);
+	//return (void *)((CARD8 *)sdlDriver->screen->pixels + row * (*size) + offset);
 }
 
 
@@ -334,3 +409,134 @@ void OsVendorInit (void)
 }
 
 
+/*-----------------------------------------------------------------------------
+ *  GL stuff
+ *-----------------------------------------------------------------------------*/
+void GL_Init()
+{
+    // setup 2D gl environment
+    checkError();
+    glClearColor( 0.0f, 0.0f, 0.0f, 1.0f );//black background
+    checkError();
+
+    glDisable(GL_DEPTH_TEST);
+    glDepthFunc( GL_ALWAYS );
+    checkError();
+    glDisable(GL_CULL_FACE);
+    checkError();
+
+    GLbyte vShaderStr[] =  
+        "attribute vec4 a_position;   \n"
+        "attribute vec2 a_texCoord;   \n"
+        "varying vec2 v_texCoord;     \n"
+        "void main()                  \n"
+        "{                            \n"
+        "   gl_Position = a_position; \n"
+        "   v_texCoord = a_texCoord;  \n"
+        "}                            \n";
+
+    GLbyte fShaderStr[] =  
+        "precision mediump float;                            \n"
+        "varying vec2 v_texCoord;                            \n"
+        "uniform sampler2D s_texture;                        \n"
+        "void main()                                         \n"
+        "{                                                   \n"
+        "  gl_FragColor = texture2D( s_texture, v_texCoord );\n"
+        "}                                                   \n";
+
+    // Load the shaders and get a linked program object
+    programObject = esLoadProgram ( ( char *)vShaderStr, (char *)fShaderStr );
+    checkError();
+
+    // Get the attribute locations
+    positionLoc = glGetAttribLocation ( programObject, "a_position" );
+    checkError();
+    texCoordLoc = glGetAttribLocation ( programObject, "a_texCoord" );
+    checkError();
+
+    // Get the sampler location
+    samplerLoc = glGetUniformLocation ( programObject, "s_texture" );
+    checkError();
+}
+
+void GL_InitTexture()
+{
+    //delete it if we already have one
+    if ( texture )
+    {
+        glDeleteTextures( 1, &texture );
+        texture = 0;
+    }
+
+    glGenTextures(1, &texture);
+    checkError();
+    glBindTexture(GL_TEXTURE_2D, texture);
+    checkError();
+    
+    //sanity check
+    int num;
+    glGetIntegerv( GL_TEXTURE_BINDING_2D, &num );
+    assert( num == texture );
+    glGetIntegerv( GL_ACTIVE_TEXTURE, &num );
+    assert( num == GL_TEXTURE0 );
+    checkError();
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, gl_filter );
+    checkError();
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, gl_filter );
+    checkError();
+
+    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE );
+    checkError();
+    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE );
+    checkError();
+
+    glTexImage2D( GL_TEXTURE_2D, 0, GL_RGB, WIDTH, HEIGHT, 0, GL_RGB,
+            GL_UNSIGNED_BYTE, NULL );
+    checkError();
+}
+
+void GL_Render( struct SdlGLESDriver * driver )
+{
+    //Draw the buffer to the screen
+
+    fprintf( stderr, "Entered GL_Render!\n" );
+
+    glClear( GL_COLOR_BUFFER_BIT );
+    checkError();
+
+    glUseProgram ( programObject );
+    checkError();
+
+    glVertexAttribPointer( positionLoc, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(GLfloat), vertexCoords );
+    checkError();
+    glVertexAttribPointer( texCoordLoc, 2, GL_FLOAT, GL_FALSE, 2*sizeof(GLfloat), texCoords );
+
+    checkError();
+
+    glEnableVertexAttribArray( positionLoc );
+    checkError();
+    glEnableVertexAttribArray( texCoordLoc );
+    checkError();
+
+    glBindTexture(GL_TEXTURE_2D, texture);
+    checkError();
+
+    //Upload buffer to texture
+    glTexSubImage2D( GL_TEXTURE_2D,0,
+            0,0, WIDTH, HEIGHT,
+            GL_RGB,GL_UNSIGNED_BYTE,driver->buffer );
+    checkError();
+
+    glUniform1i( samplerLoc, 0 );
+    checkError();
+
+    glDrawElements( GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, indices );
+    checkError();
+
+    //Push to screen
+    SDL_GL_SwapBuffers();
+    checkError();
+
+    return;
+}
