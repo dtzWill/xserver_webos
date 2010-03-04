@@ -37,7 +37,7 @@
 #define WIDTH 320
 #define HEIGHT 480
 
-#define DEBUG_GL
+//#define DEBUG_GL
 
 #ifdef DEBUG_GL
 static void checkError()
@@ -83,15 +83,38 @@ GLint  texCoordLoc;
 GLint samplerLoc;
 
 //We're doing one-to-one texture to screen anyway
-int gl_filter = GL_LINEAR;
+int gl_filter = GL_NEAREST;
 
-float vertexCoords[] =
+//Landscape, keyboard on left.
+float land_l_vertexCoords[] =
+{
+    -1, -1,
+    1, -1,
+    -1, 1,
+    1, 1
+};
+
+//Landscape, keyboard on right.
+float land_r_vertexCoords[] =
+{
+    1, 1,
+    -1, 1,
+    1, -1,
+    -1, -1
+};
+//Portrait
+float portrait_vertexCoords[] =
 {
     -1, 1,
     -1, -1,
     1, 1,
     1, -1
 };
+
+//Pick an orientation
+//Have to update few other places to reflect changing this, fwiw
+float * vertexCoords = land_r_vertexCoords;
+
 
 float texCoords[] =
 {
@@ -166,7 +189,9 @@ static Bool sdlScreenInit(KdScreenInfo *screen)
 #ifdef DEBUG
 	printf("Attempting for %dx%d/%dbpp mode\n", screen->width, screen->height, screen->fb[0].depth);
 #endif
-	SDL_Surface * s = SDL_SetVideoMode(screen->width, screen->height, screen->fb[0].depth, SDL_OPENGLES);
+	SDL_Surface * s = SDL_SetVideoMode(screen->width, screen->height, screen->fb[0].depth,
+            SDL_OPENGLES | SDL_FULLSCREEN );
+    fprintf( stderr, "SetVideoMode: %p\n", s );
 	if( s == NULL )
 		return FALSE;
 #ifdef DEBUG
@@ -175,15 +200,17 @@ static Bool sdlScreenInit(KdScreenInfo *screen)
     //XXX: Bail if we DONT get the expected (hard-coded) resolution.
 
     //We're using 24 bitdepth, each color has it's own byte
-    //XXX: OKAY: I'll fix this out later.  Expect color issues.
-    int redMask = 0xff0000;
+    //Note that the screen still is 32bit, but we use 24bit so we can upload
+    //as a texture more easily (no reason to introduce alpha)
+    int redMask = 0x0000ff;
     int greenMask = 0x00ff00;
-    int blueMask = 0x0000ff;
+    int blueMask = 0xff0000;
 
     //Create buffer for rendering into
     sdlGLESDriver->buffer = malloc( WIDTH*HEIGHT*24 / 8 );
-    screen->width=s->w;
-	screen->height=s->h;
+    //Rotate
+    screen->width=s->h;
+	screen->height=s->w;
 	screen->fb[0].depth= 24;
 	screen->fb[0].visuals=(1<<TrueColor);
 	screen->fb[0].redMask=redMask;
@@ -195,8 +222,8 @@ static Bool sdlScreenInit(KdScreenInfo *screen)
 	screen->memory_size=0;
 	screen->off_screen_base=0;
 	screen->driver=sdlGLESDriver;
-	screen->fb[0].byteStride=(WIDTH*24)/8;
-	screen->fb[0].pixelStride=WIDTH;
+	screen->fb[0].byteStride=(HEIGHT*24)/8;
+	screen->fb[0].pixelStride=HEIGHT;
 	screen->fb[0].frameBuffer=(CARD8 *)sdlGLESDriver->buffer;
 	SDL_WM_SetCaption("Freedesktop.org X server (SDLGLES)", NULL);
 
@@ -327,6 +354,7 @@ int ddxProcessArgument(int argc, char **argv, int i)
 
 void sdlTimer(void)
 {
+    return;
 	static int buttonState=0;
 	SDL_Event event;
 	SDL_ShowCursor(FALSE);
@@ -491,7 +519,7 @@ void GL_InitTexture()
     glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE );
     checkError();
 
-    glTexImage2D( GL_TEXTURE_2D, 0, GL_RGB, WIDTH, HEIGHT, 0, GL_RGB,
+    glTexImage2D( GL_TEXTURE_2D, 0, GL_RGB, HEIGHT, WIDTH, 0, GL_RGB,
             GL_UNSIGNED_BYTE, NULL );
     checkError();
 }
@@ -524,7 +552,7 @@ void GL_Render( struct SdlGLESDriver * driver )
 
     //Upload buffer to texture
     glTexSubImage2D( GL_TEXTURE_2D,0,
-            0,0, WIDTH, HEIGHT,
+            0,0, HEIGHT, WIDTH,
             GL_RGB,GL_UNSIGNED_BYTE,driver->buffer );
     checkError();
 
@@ -537,6 +565,9 @@ void GL_Render( struct SdlGLESDriver * driver )
     //Push to screen
     SDL_GL_SwapBuffers();
     checkError();
+
+    //glFinish();
+    //checkError();
 
     return;
 }
