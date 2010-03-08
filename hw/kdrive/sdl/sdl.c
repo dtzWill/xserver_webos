@@ -182,13 +182,11 @@ static Bool sdlScreenInit(KdScreenInfo *screen)
 #ifdef DEBUG
 	printf("sdlScreenInit()\n");
 #endif
-
-    screen->width = WIDTH;
-    screen->height = HEIGHT;
-    screen->fb[0].depth = 24;
-#ifdef DEBUG
-	printf("Attempting for %dx%d/%dbpp mode\n", screen->width, screen->height, screen->fb[0].depth);
-#endif
+	int ret = SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER);
+    if ( ret )
+    {
+        return FALSE;
+    }
 	SDL_Surface * s = SDL_SetVideoMode(screen->width, screen->height, screen->fb[0].depth,
             SDL_OPENGLES | SDL_FULLSCREEN );
     fprintf( stderr, "SetVideoMode: %p\n", s );
@@ -354,7 +352,6 @@ int ddxProcessArgument(int argc, char **argv, int i)
 
 void sdlTimer(void)
 {
-    return;
 	static int buttonState=0;
 	SDL_Event event;
 	SDL_ShowCursor(FALSE);
@@ -416,7 +413,10 @@ static int xsdlInit(void)
 #ifdef DEBUG
 	printf("Calling SDL_Init()\n");
 #endif
-	return SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER);
+    /*
+     * Moved actual SDL_Init call to directly above SDL_SetVideoMode()
+     */
+    return TRUE;
 }
 
 
@@ -527,9 +527,6 @@ void GL_InitTexture()
 void GL_Render( struct SdlGLESDriver * driver )
 {
     //Draw the buffer to the screen
-
-    fprintf( stderr, "Entered GL_Render!\n" );
-
     glClear( GL_COLOR_BUFFER_BIT );
     checkError();
 
@@ -565,9 +562,6 @@ void GL_Render( struct SdlGLESDriver * driver )
     //Push to screen
     SDL_GL_SwapBuffers();
     checkError();
-
-    //glFinish();
-    //checkError();
 
     return;
 }
