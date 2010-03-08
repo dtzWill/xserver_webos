@@ -93,8 +93,7 @@ static Bool sdlScreenInit(KdScreenInfo *screen)
 #ifdef DEBUG
 	printf("Attempting for %dx%d/%dbpp mode\n", screen->width, screen->height, screen->fb[0].depth);
 #endif
-	int ret = SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER);
-    if ( ret )
+	if ( SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) )
     {
         return FALSE;
     }
