@@ -85,11 +85,11 @@ static Bool sdlScreenInit(KdScreenInfo *screen)
 #endif
 	if (!screen->width || !screen->height)
 	{
-		screen->width = 640;
+		screen->width = 320;
 		screen->height = 480;
 	}
 	if (!screen->fb[0].depth)
-		screen->fb[0].depth = 4;
+		screen->fb[0].depth = 32;
 #ifdef DEBUG
 	printf("Attempting for %dx%d/%dbpp mode\n", screen->width, screen->height, screen->fb[0].depth);
 #endif
