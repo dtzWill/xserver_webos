@@ -1622,11 +1622,14 @@ KdInputTransition  kdInputMachine[num_input_states][num_input_class] = {
 static int
 KdInsideEmulationWindow (KdPointerInfo *pi, int x, int y, int z)
 {
-    pi->emulationDx = pi->heldEvent.x - x;
-    pi->emulationDy = pi->heldEvent.y - y;
-
-    return (abs (pi->emulationDx) < EMULATION_WINDOW &&
-	    abs (pi->emulationDy) < EMULATION_WINDOW);
+    //Never outside the emulation window in our example.
+    //XXX: Make this less of a hack
+    return FALSE;
+//    pi->emulationDx = pi->heldEvent.x - x;
+//    pi->emulationDy = pi->heldEvent.y - y;
+//
+//    return (abs (pi->emulationDx) < EMULATION_WINDOW &&
+//	    abs (pi->emulationDy) < EMULATION_WINDOW);
 }
 				     
 static KdInputClass

@@ -40,6 +40,8 @@ static Bool sdlKeyboardInit(KdKeyboardInfo *ki);
 
 static Bool sdlMouseInit(KdPointerInfo *pi);
 static void sdlMouseFini(KdPointerInfo *pi);
+static Bool sdlMouseEnable(KdPointerInfo *pi);
+static Bool sdlMouseDisable(KdPointerInfo *pi);
 
 void *sdlShadowWindow (ScreenPtr pScreen, CARD32 row, CARD32 offset, int mode, CARD32 *size, void *closure);
 void sdlShadowUpdate (ScreenPtr pScreen, shadowBufPtr pBuf);
@@ -59,6 +61,8 @@ KdPointerDriver sdlMouseDriver = {
     .name = "mouse",
     .Init = sdlMouseInit,
     .Fini = sdlMouseFini,
+    .Enable = sdlMouseEnable,
+    .Disable = sdlMouseDisable
 };
 
 
@@ -202,7 +206,7 @@ static Bool sdlKeyboardInit(KdKeyboardInfo *ki)
 static Bool sdlMouseInit (KdPointerInfo *pi)
 {
         sdlPointer = pi;
-	return TRUE;
+	return Success;
 }
 
 static void sdlMouseFini(KdPointerInfo *pi)
@@ -210,6 +214,17 @@ static void sdlMouseFini(KdPointerInfo *pi)
         sdlPointer = NULL;
 }
 
+static Bool sdlMouseEnable (KdPointerInfo *pi)
+{
+    //XXX: Is something supposed to happen here?
+    return Success;
+}
+
+static Bool sdlMouseDisable (KdPointerInfo *pi)
+{
+    //XXX: Is something supposed to happen here?
+    return Success;
+}
 
 void InitCard(char *name)
 {
