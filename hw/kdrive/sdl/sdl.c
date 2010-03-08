@@ -93,6 +93,11 @@ static Bool sdlScreenInit(KdScreenInfo *screen)
 #ifdef DEBUG
 	printf("Attempting for %dx%d/%dbpp mode\n", screen->width, screen->height, screen->fb[0].depth);
 #endif
+	int ret = SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER);
+    if ( ret )
+    {
+        return FALSE;
+    }
 	sdlDriver->screen=SDL_SetVideoMode(screen->width, screen->height, screen->fb[0].depth, 0);
 	if(sdlDriver->screen==NULL)
 		return FALSE;
@@ -313,7 +318,10 @@ static int xsdlInit(void)
 #ifdef DEBUG
 	printf("Calling SDL_Init()\n");
 #endif
-	return SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER);
+    /*
+     * Moved actual SDL_Init call to directly above SDL_SetVideoMode()
+     */
+    return TRUE;
 }
 
 
