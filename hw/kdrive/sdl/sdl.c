@@ -37,11 +37,15 @@ static Bool sdlCreateRes(ScreenPtr pScreen);
 
 static void sdlKeyboardFini(KdKeyboardInfo *ki);
 static Bool sdlKeyboardInit(KdKeyboardInfo *ki);
+static Bool sdlKeyboardEnable(KdPointerInfo *pi);
+static Bool sdlKeyboardDisable(KdPointerInfo *pi);
 
 static Bool sdlMouseInit(KdPointerInfo *pi);
 static void sdlMouseFini(KdPointerInfo *pi);
 static Bool sdlMouseEnable(KdPointerInfo *pi);
 static Bool sdlMouseDisable(KdPointerInfo *pi);
+
+static int sdlSymForKeyEvent( SDL_keysym * keysym );
 
 void *sdlShadowWindow (ScreenPtr pScreen, CARD32 row, CARD32 offset, int mode, CARD32 *size, void *closure);
 void sdlShadowUpdate (ScreenPtr pScreen, shadowBufPtr pBuf);
@@ -55,6 +59,8 @@ KdKeyboardDriver sdlKeyboardDriver = {
     .name = "keyboard",
     .Init = sdlKeyboardInit,
     .Fini = sdlKeyboardFini,
+    .Enable = sdlKeyboardEnable,
+    .Disable = sdlKeyboardDisable
 };
 
 KdPointerDriver sdlMouseDriver = {
@@ -200,7 +206,19 @@ static Bool sdlKeyboardInit(KdKeyboardInfo *ki)
 
 	sdlKeyboard = ki;
 
-        return TRUE;
+        return Success;
+}
+
+static Bool sdlKeyboardEnable(KdPointerInfo *pi)
+{
+    //XXX: Is something supposed to happen here?
+    return Success;
+}
+
+static Bool sdlKeyboardDisable(KdPointerInfo *pi)
+{
+    //XXX: Is something supposed to happen here?
+    return Success;
 }
 
 static Bool sdlMouseInit (KdPointerInfo *pi)
@@ -272,6 +290,7 @@ int ddxProcessArgument(int argc, char **argv, int i)
 void sdlTimer(void)
 {
 	static int buttonState=0;
+    int xkeysym;
 	SDL_Event event;
 	SDL_ShowCursor(FALSE);
 	/* get the mouse state */
@@ -314,10 +333,11 @@ void sdlTimer(void)
 				break;
 			case SDL_KEYDOWN:
 			case SDL_KEYUP:
+                xkeysym = sdlSymForKeyEvent( &event.key.keysym );
 #ifdef DEBUG
-				printf("Keycode: %d\n", event.key.keysym.scancode);
+				printf("Keycode: %d\n", xkeysym );
 #endif
-			        KdEnqueueKeyboardEvent (sdlKeyboard, event.key.keysym.scancode, event.type==SDL_KEYUP);
+			        KdEnqueueKeyboardEvent (sdlKeyboard, xkeysym, event.type==SDL_KEYUP);
 				break;
 
 			case SDL_QUIT:
@@ -355,4 +375,11 @@ void OsVendorInit (void)
     KdOsInit (&sdlOsFuncs);
 }
 
+static int sdlSymForKeyEvent( SDL_keysym * keysym )
+{
+    //Translate the SDL keysym to something appropriate for an X event
+
+    //XXX: Implement me
+    return 0;
+}
 
