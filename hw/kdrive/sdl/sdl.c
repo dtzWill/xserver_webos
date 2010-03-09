@@ -394,14 +394,16 @@ int ddxProcessArgument(int argc, char **argv, int i)
 void sdlTimer(void)
 {
 	static int buttonState=0;
-    int xkeysym;
+    int xkeysym, newx, newy;
 	SDL_Event event;
 	SDL_ShowCursor(FALSE);
 	/* get the mouse state */
 	while ( SDL_PollEvent(&event) ) {
 		switch (event.type) {
 			case SDL_MOUSEMOTION:
-				KdEnqueuePointerEvent(sdlPointer, mouseState, event.motion.x, event.motion.y, 0);
+                newx = event.motion.y;
+                newy = WIDTH - event.motion.x;
+				KdEnqueuePointerEvent(sdlPointer, mouseState, newx, newy, 0);
 				break;
 			case SDL_MOUSEBUTTONDOWN:
 				switch(event.button.button)
