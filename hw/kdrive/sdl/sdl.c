@@ -27,6 +27,7 @@
 #include "kdrive-config.h"
 #endif
 #include "kdrive.h"
+#include "keymap.h"
 #include <SDL/SDL.h>
 #include <X11/keysym.h>
 
@@ -44,8 +45,6 @@ static Bool sdlMouseInit(KdPointerInfo *pi);
 static void sdlMouseFini(KdPointerInfo *pi);
 static Bool sdlMouseEnable(KdPointerInfo *pi);
 static Bool sdlMouseDisable(KdPointerInfo *pi);
-
-static int sdlSymForKeyEvent( SDL_keysym * keysym );
 
 void *sdlShadowWindow (ScreenPtr pScreen, CARD32 row, CARD32 offset, int mode, CARD32 *size, void *closure);
 void sdlShadowUpdate (ScreenPtr pScreen, shadowBufPtr pBuf);
@@ -333,10 +332,8 @@ void sdlTimer(void)
 				break;
 			case SDL_KEYDOWN:
 			case SDL_KEYUP:
-                xkeysym = sdlSymForKeyEvent( &event.key.keysym );
-#ifdef DEBUG
-				printf("Keycode: %d\n", xkeysym );
-#endif
+                xkeysym = sdlSymForKeyEvent( &event.key );
+				fprintf(stderr, "Keycode: %d\n", xkeysym );
 			        KdEnqueueKeyboardEvent (sdlKeyboard, xkeysym, event.type==SDL_KEYUP);
 				break;
 
@@ -374,12 +371,3 @@ void OsVendorInit (void)
 {
     KdOsInit (&sdlOsFuncs);
 }
-
-static int sdlSymForKeyEvent( SDL_keysym * keysym )
-{
-    //Translate the SDL keysym to something appropriate for an X event
-
-    //XXX: Implement me
-    return 0;
-}
-
