@@ -27,6 +27,7 @@
 #include "kdrive-config.h"
 #endif
 #include "kdrive.h"
+#include "keymap.h"
 #include <SDL/SDL.h>
 #include <X11/keysym.h>
 
@@ -133,9 +134,13 @@ static Bool sdlCreateRes(ScreenPtr pScreen);
 
 static void sdlKeyboardFini(KdKeyboardInfo *ki);
 static Bool sdlKeyboardInit(KdKeyboardInfo *ki);
+static Bool sdlKeyboardEnable(KdPointerInfo *pi);
+static Bool sdlKeyboardDisable(KdPointerInfo *pi);
 
 static Bool sdlMouseInit(KdPointerInfo *pi);
 static void sdlMouseFini(KdPointerInfo *pi);
+static Bool sdlMouseEnable(KdPointerInfo *pi);
+static Bool sdlMouseDisable(KdPointerInfo *pi);
 
 void *sdlShadowWindow (ScreenPtr pScreen, CARD32 row, CARD32 offset, int mode, CARD32 *size, void *closure);
 void sdlShadowUpdate (ScreenPtr pScreen, shadowBufPtr pBuf);
@@ -149,12 +154,16 @@ KdKeyboardDriver sdlKeyboardDriver = {
     .name = "keyboard",
     .Init = sdlKeyboardInit,
     .Fini = sdlKeyboardFini,
+    .Enable = sdlKeyboardEnable,
+    .Disable = sdlKeyboardDisable
 };
 
 KdPointerDriver sdlMouseDriver = {
     .name = "mouse",
     .Init = sdlMouseInit,
     .Fini = sdlMouseFini,
+    .Enable = sdlMouseEnable,
+    .Disable = sdlMouseDisable
 };
 
 
@@ -182,8 +191,17 @@ static Bool sdlScreenInit(KdScreenInfo *screen)
 #ifdef DEBUG
 	printf("sdlScreenInit()\n");
 #endif
-	int ret = SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER);
-    if ( ret )
+	if (!screen->width || !screen->height)
+	{
+		screen->width = 320;
+		screen->height = 480;
+	}
+	if (!screen->fb[0].depth)
+		screen->fb[0].depth = 32;
+#ifdef DEBUG
+	printf("Attempting for %dx%d/%dbpp mode\n", screen->width, screen->height, screen->fb[0].depth);
+#endif
+	if ( SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) )
     {
         return FALSE;
     }
@@ -292,13 +310,25 @@ static Bool sdlKeyboardInit(KdKeyboardInfo *ki)
 
 	sdlKeyboard = ki;
 
-        return TRUE;
+        return Success;
+}
+
+static Bool sdlKeyboardEnable(KdPointerInfo *pi)
+{
+    //XXX: Is something supposed to happen here?
+    return Success;
+}
+
+static Bool sdlKeyboardDisable(KdPointerInfo *pi)
+{
+    //XXX: Is something supposed to happen here?
+    return Success;
 }
 
 static Bool sdlMouseInit (KdPointerInfo *pi)
 {
         sdlPointer = pi;
-	return TRUE;
+	return Success;
 }
 
 static void sdlMouseFini(KdPointerInfo *pi)
@@ -306,6 +336,17 @@ static void sdlMouseFini(KdPointerInfo *pi)
         sdlPointer = NULL;
 }
 
+static Bool sdlMouseEnable (KdPointerInfo *pi)
+{
+    //XXX: Is something supposed to happen here?
+    return Success;
+}
+
+static Bool sdlMouseDisable (KdPointerInfo *pi)
+{
+    //XXX: Is something supposed to happen here?
+    return Success;
+}
 
 void InitCard(char *name)
 {
@@ -353,6 +394,7 @@ int ddxProcessArgument(int argc, char **argv, int i)
 void sdlTimer(void)
 {
 	static int buttonState=0;
+    int xkeysym;
 	SDL_Event event;
 	SDL_ShowCursor(FALSE);
 	/* get the mouse state */
@@ -395,10 +437,9 @@ void sdlTimer(void)
 				break;
 			case SDL_KEYDOWN:
 			case SDL_KEYUP:
-#ifdef DEBUG
-				printf("Keycode: %d\n", event.key.keysym.scancode);
-#endif
-			        KdEnqueueKeyboardEvent (sdlKeyboard, event.key.keysym.scancode, event.type==SDL_KEYUP);
+                xkeysym = sdlSymForKeyEvent( &event.key );
+				fprintf(stderr, "Keycode: %d\n", xkeysym );
+			        KdEnqueueKeyboardEvent (sdlKeyboard, xkeysym, event.type==SDL_KEYUP);
 				break;
 
 			case SDL_QUIT:
