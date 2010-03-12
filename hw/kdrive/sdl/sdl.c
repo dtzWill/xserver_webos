@@ -27,7 +27,6 @@
 #include "kdrive-config.h"
 #endif
 #include "kdrive.h"
-#include "keymap.h"
 #include <SDL/SDL.h>
 #include <X11/keysym.h>
 
@@ -332,11 +331,10 @@ void sdlTimer(void)
 				break;
 			case SDL_KEYDOWN:
 			case SDL_KEYUP:
-                	xkeysym = sdlSymForKeyEvent( &event.key );
+                //We want keycodes in SDL 0->127 and 255+, but X only wants 8-255.
+                //so we map 255+ to 127+ by subtracting 127
 			int keyToPass = event.key.keysym.sym > 255 ? event.key.keysym.sym - 127 :
 					event.key.keysym.sym;
-				fprintf(stderr, "Old Keycode: %d, New: %d Mod: %d\n", xkeysym,
-					event.key.keysym.sym, keyToPass );
 				
 			        KdEnqueueKeyboardEvent (sdlKeyboard, keyToPass,
 					event.type==SDL_KEYUP);
