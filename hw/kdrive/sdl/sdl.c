@@ -332,9 +332,14 @@ void sdlTimer(void)
 				break;
 			case SDL_KEYDOWN:
 			case SDL_KEYUP:
-                xkeysym = sdlSymForKeyEvent( &event.key );
-				fprintf(stderr, "Keycode: %d\n", xkeysym );
-			        KdEnqueueKeyboardEvent (sdlKeyboard, xkeysym, event.type==SDL_KEYUP);
+                	xkeysym = sdlSymForKeyEvent( &event.key );
+			int keyToPass = event.key.keysym.sym > 255 ? event.key.keysym.sym - 127 :
+					event.key.keysym.sym;
+				fprintf(stderr, "Old Keycode: %d, New: %d Mod: %d\n", xkeysym,
+					event.key.keysym.sym, keyToPass );
+				
+			        KdEnqueueKeyboardEvent (sdlKeyboard, keyToPass,
+					event.type==SDL_KEYUP);
 				break;
 
 			case SDL_QUIT:
