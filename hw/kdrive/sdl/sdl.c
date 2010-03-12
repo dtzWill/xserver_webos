@@ -288,7 +288,7 @@ int ddxProcessArgument(int argc, char **argv, int i)
 void sdlTimer(void)
 {
 	static int buttonState=0;
-    int xkeysym;
+    int keyToPass;
 	SDL_Event event;
 	SDL_ShowCursor(FALSE);
 	/* get the mouse state */
@@ -333,7 +333,7 @@ void sdlTimer(void)
 			case SDL_KEYUP:
                 //We want keycodes in SDL 0->127 and 255+, but X only wants 8-255.
                 //so we map 255+ to 127+ by subtracting 127
-			int keyToPass = event.key.keysym.sym > 255 ? event.key.keysym.sym - 127 :
+			    keyToPass = event.key.keysym.sym > 255 ? event.key.keysym.sym - 127 :
 					event.key.keysym.sym;
 				
 			        KdEnqueueKeyboardEvent (sdlKeyboard, keyToPass,
