@@ -27,7 +27,6 @@
 #include "kdrive-config.h"
 #endif
 #include "kdrive.h"
-#include "keymap.h"
 #include <SDL/SDL.h>
 #include <X11/keysym.h>
 
@@ -394,7 +393,7 @@ int ddxProcessArgument(int argc, char **argv, int i)
 void sdlTimer(void)
 {
 	static int buttonState=0;
-    int xkeysym, newx, newy;
+    int keyToPass, newx, newy;
 	SDL_Event event;
 	SDL_ShowCursor(FALSE);
 	/* get the mouse state */
@@ -439,9 +438,13 @@ void sdlTimer(void)
 				break;
 			case SDL_KEYDOWN:
 			case SDL_KEYUP:
-                xkeysym = sdlSymForKeyEvent( &event.key );
-				fprintf(stderr, "Keycode: %d\n", xkeysym );
-			        KdEnqueueKeyboardEvent (sdlKeyboard, xkeysym, event.type==SDL_KEYUP);
+                //We want keycodes in SDL 0->127 and 255+, but X only wants 8-255.
+                //so we map 255+ to 127+ by subtracting 127
+			    keyToPass = event.key.keysym.sym > 255 ? event.key.keysym.sym - 127 :
+					event.key.keysym.sym;
+				
+			        KdEnqueueKeyboardEvent (sdlKeyboard, keyToPass,
+					event.type==SDL_KEYUP);
 				break;
 
 			case SDL_QUIT:
