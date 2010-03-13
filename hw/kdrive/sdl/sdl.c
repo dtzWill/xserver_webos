@@ -37,6 +37,14 @@
 #define WIDTH 320
 #define HEIGHT 480
 
+//XXX: include <pdl.h> ?
+void PDL_SetOrientation( int orientation );
+
+#define PDL_ORIENTATION_BOTTOM 0
+#define PDL_ORIENTATION_RIGHT 1
+#define PDL_ORIENTATION_TOP 2
+#define PDL_ORIENTATION_LEFT 3
+
 //#define DEBUG_GL
 
 #ifdef DEBUG_GL
@@ -126,6 +134,8 @@ float texCoords[] =
     1.0, 1.0
 };
 
+Bool isPortraitOrientation = TRUE;
+
 GLushort indices[] = { 0, 1, 2, 1, 2, 3 };
 
 //We're using 24 bitdepth, each color has it's own byte
@@ -210,12 +220,12 @@ static Bool sdlScreenInit(KdScreenInfo *screen)
     //Check that this is a valid resolution and determine orientation
     if ( screen->width == WIDTH && screen->height == HEIGHT )
     {
-        //Portrait orientation
+        isPortraitOrientation = TRUE;
         vertexCoords = portrait_vertexCoords;
     }
     else if ( screen->height == WIDTH && screen->width == HEIGHT )
     {
-        //Keyboard on the right
+        isPortraitOrientation = FALSE;
         vertexCoords = land_r_vertexCoords;
     }
     else
@@ -234,8 +244,11 @@ static Bool sdlScreenInit(KdScreenInfo *screen)
     {
         return FALSE;
     }
-	s = SDL_SetVideoMode( WIDTH, HEIGHT, screen->fb[0].depth,
+	s = SDL_SetVideoMode( screen->width, screen->height, screen->fb[0].depth,
             SDL_OPENGLES | SDL_FULLSCREEN );
+    PDL_SetOrientation( isPortraitOrientation ?
+            PDL_ORIENTATION_BOTTOM :
+            PDL_ORIENTATION_LEFT );
     fprintf( stderr, "SetVideoMode: %p\n", s );
 	if( s == NULL )
 		return FALSE;
@@ -422,20 +435,15 @@ void sdlTimer(void)
 			case SDL_MOUSEMOTION:
                 //Interpret mouse coordinates differently
                 //depending on the screen orientation
-                if ( vertexCoords == portrait_vertexCoords )
+                if ( isPortraitOrientation )
                 {
                     newx = event.motion.x;
                     newy = event.motion.y;
                 }
-                else if ( vertexCoords == land_r_vertexCoords )
+                else
                 {
                     newx = event.motion.y;
                     newy = WIDTH - event.motion.x;
-                }
-                else
-                {
-                    //Unexpected orientation
-                    break;
                 }
 				KdEnqueuePointerEvent(sdlPointer, mouseState, newx, newy, 0);
 				break;
