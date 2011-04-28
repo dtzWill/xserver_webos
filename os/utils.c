@@ -255,6 +255,14 @@ static Bool StillLocking = FALSE;
 static char LockFile[PATH_MAX];
 static Bool nolock = FALSE;
 
+// We set mode to 0664 instead of 0644 because the user itself
+// only exists for this instance of this app's jail.  By extending
+// permissions to the group (jailusers) that all jailed apps run as,
+// we allow them to modify the lock as needed.
+// Note that even for the same app this is true across jail instances.
+// Additionally, we don't chmod it to 0444 anymore, either, for same reason.
+static mode_t lockmode = 0664; // 0644
+
 /*
  * LockServer --
  *      Check if the server lock file exists.  If so, check if the PID
@@ -293,7 +301,7 @@ LockServer(void)
   i = 0;
   do {
     i++;
-    lfd = open(tmp, O_CREAT | O_EXCL | O_WRONLY, 0644);
+    lfd = open(tmp, O_CREAT | O_EXCL | O_WRONLY, lockmode);
     if (lfd < 0)
        sleep(2);
     else
@@ -304,7 +312,7 @@ LockServer(void)
     i = 0;
     do {
       i++;
-      lfd = open(tmp, O_CREAT | O_EXCL | O_WRONLY, 0644);
+      lfd = open(tmp, O_CREAT | O_EXCL | O_WRONLY, lockmode);
       if (lfd < 0)
          sleep(2);
       else
@@ -315,7 +323,7 @@ LockServer(void)
     FatalError("Could not create lock file in %s\n", tmp);
   (void) sprintf(pid_str, "%10ld\n", (long)getpid());
   (void) write(lfd, pid_str, 11);
-  (void) chmod(tmp, 0444);
+  (void) chmod(tmp, lockmode);
   (void) close(lfd);
 
   /*
