@@ -631,6 +631,8 @@ void GL_InitTexture( struct SdlGLESDriver * driver )
 
 void GL_Render( struct SdlGLESDriver * driver, UpdateRect_t U )
 {
+    char * buf = NULL;
+
     dprintf( "UPDATE: x1: %ld, x2: %ld, y1: %ld, y2: %ld\n",
         U.x1, U.x2, U.y1, U.y2 );
 
@@ -666,7 +668,7 @@ void GL_Render( struct SdlGLESDriver * driver, UpdateRect_t U )
     // c)I'm unclear on what the lifetime of the temporary packed data would be
 
     // Informally, just sending updated lines is already much faster.
-    char * buf = driver->buffer + U.y1 * driver->width * 3;
+    buf = driver->buffer + U.y1 * driver->width * 3;
     glTexSubImage2D( GL_TEXTURE_2D, 0,
             0, U.y1, driver->width, U.y2 - U.y1,
             GL_RGB, GL_UNSIGNED_BYTE, buf );
