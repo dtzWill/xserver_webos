@@ -34,8 +34,7 @@
 #include <SDL/SDL_opengles.h>
 #include "esFunc.h"
 
-#define WIDTH 320
-#define HEIGHT 480
+static int screen_width = -1, screen_height = -1;
 
 //XXX: include <pdl.h> ?
 void PDL_SetOrientation( int orientation );
@@ -210,77 +209,74 @@ static Bool sdlScreenInit(KdScreenInfo *screen)
 #ifdef DEBUG
 	printf("sdlScreenInit()\n");
 #endif
-    //Set resolution if not specified
-	if (!screen->width || !screen->height)
-	{
-		screen->width = WIDTH;
-		screen->height = HEIGHT;
-	}
 
-    //Check that this is a valid resolution and determine orientation
-    if ( screen->width == WIDTH && screen->height == HEIGHT )
-    {
-        isPortraitOrientation = TRUE;
-        vertexCoords = portrait_vertexCoords;
-    }
-    else if ( screen->height == WIDTH && screen->width == HEIGHT )
-    {
-        isPortraitOrientation = FALSE;
-        vertexCoords = land_r_vertexCoords;
-    }
-    else
-    {
-        //If this doesn't match either orientation, exit.
-        //We don't support scaling/panning presently.
-        return FALSE;
-    }
+  // Override what the user said the resolution should be...
+  screen->width = 0;
+  screen->height = 0;
 
-	if (!screen->fb[0].depth)
-		screen->fb[0].depth = 32;
+  if (!screen->fb[0].depth)
+    screen->fb[0].depth = 32;
 #ifdef DEBUG
-	printf("Attempting for %dx%d/%dbpp mode\n", screen->width, screen->height, screen->fb[0].depth);
+  printf("Attempting for %dx%d/%dbpp mode\n", screen->width, screen->height, screen->fb[0].depth);
 #endif
-	if ( SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) )
-    {
-        return FALSE;
-    }
-	s = SDL_SetVideoMode( screen->width, screen->height, screen->fb[0].depth,
-            SDL_OPENGLES | SDL_FULLSCREEN );
-    PDL_SetOrientation( isPortraitOrientation ?
-            PDL_ORIENTATION_BOTTOM :
-            PDL_ORIENTATION_LEFT );
-    fprintf( stderr, "SetVideoMode: %p\n", s );
-	if( s == NULL )
-		return FALSE;
+  if ( SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) )
+  {
+    return FALSE;
+  }
+  s = SDL_SetVideoMode( screen->width, screen->height, screen->fb[0].depth,
+      SDL_OPENGLES | SDL_FULLSCREEN );
+  fprintf( stderr, "SetVideoMode: %p\n", s );
+  if( s == NULL )
+    return FALSE;
+
 #ifdef DEBUG
-	printf("Set %dx%d/%dbpp mode\n", s->w, s->h, s->format->BitsPerPixel);
+  fprintf( stderr, "Set %dx%d/%dbpp mode\n", s->w, s->h, s->format->BitsPerPixel );
 #endif
 
-    //Create buffer for rendering into
-    sdlGLESDriver->buffer = malloc( WIDTH*HEIGHT*24 / 8 );
-    sdlGLESDriver->width = screen->width;
-    sdlGLESDriver->height = screen->height;
+  // Sanity check the dimensions
+  if ( s->w <= 0 || s->h <= 0 )
+    return FALSE;
 
-	screen->fb[0].depth= 24;
-	screen->fb[0].visuals=(1<<TrueColor);
-	screen->fb[0].redMask=redMask;
-	screen->fb[0].greenMask=greenMask;
-	screen->fb[0].blueMask=blueMask;
-	screen->fb[0].bitsPerPixel= 24;
-	screen->rate=60;
-	screen->memory_base=(CARD8 *)sdlGLESDriver->buffer;
-	screen->memory_size=0;
-	screen->off_screen_base=0;
-	screen->driver=sdlGLESDriver;
-	screen->fb[0].byteStride=(screen->width*24)/8;
-	screen->fb[0].pixelStride=screen->width;
-	screen->fb[0].frameBuffer=(CARD8 *)sdlGLESDriver->buffer;
-	SDL_WM_SetCaption("Freedesktop.org X server (SDLGLES)", NULL);
+  screen_width  = screen->width = s->w;
+  screen_height = screen->height = s->h;
 
-    GL_Init();
-    GL_InitTexture( sdlGLESDriver );
+  isPortraitOrientation = ( s->h < s->w );
 
-	return TRUE;
+  if (isPortraitOrientation)
+    vertexCoords = portrait_vertexCoords;
+  else
+    vertexCoords = land_r_vertexCoords;
+
+  // XXX: Do we need this, since we're just using whatever resolution we were given?
+  //PDL_SetOrientation( isPortraitOrientation ?
+  //    PDL_ORIENTATION_BOTTOM :
+  //    PDL_ORIENTATION_LEFT );
+
+  //Create buffer for rendering into
+  sdlGLESDriver->buffer = malloc( s->w * s->h *24 / 8 );
+  sdlGLESDriver->width = screen->width;
+  sdlGLESDriver->height = screen->height;
+
+  screen->fb[0].depth= 24;
+  screen->fb[0].visuals=(1<<TrueColor);
+  screen->fb[0].redMask=redMask;
+  screen->fb[0].greenMask=greenMask;
+  screen->fb[0].blueMask=blueMask;
+  screen->fb[0].bitsPerPixel= 24;
+  screen->rate=60;
+  screen->memory_base=(CARD8 *)sdlGLESDriver->buffer;
+  screen->memory_size=0;
+  screen->off_screen_base=0;
+  screen->driver=sdlGLESDriver;
+  screen->fb[0].byteStride=(screen->width*24)/8;
+  screen->fb[0].pixelStride=screen->width;
+  screen->fb[0].frameBuffer=(CARD8 *)sdlGLESDriver->buffer;
+  SDL_WM_SetCaption("Freedesktop.org X server (SDLGLES)", NULL);
+
+  GL_Init();
+  GL_InitTexture( sdlGLESDriver );
+
+  return TRUE;
 }
 
 void sdlShadowUpdate (ScreenPtr pScreen, shadowBufPtr pBuf)
@@ -425,76 +421,84 @@ int ddxProcessArgument(int argc, char **argv, int i)
 
 void sdlTimer(void)
 {
-	static int buttonState=0;
-    int keyToPass, newx, newy;
-	SDL_Event event;
-	SDL_ShowCursor(FALSE);
-	/* get the mouse state */
-	while ( SDL_PollEvent(&event) ) {
-		switch (event.type) {
-			case SDL_MOUSEMOTION:
-                //Interpret mouse coordinates differently
-                //depending on the screen orientation
-                if ( isPortraitOrientation )
-                {
-                    newx = event.motion.x;
-                    newy = event.motion.y;
-                }
-                else
-                {
-                    newx = event.motion.y;
-                    newy = WIDTH - event.motion.x;
-                }
-				KdEnqueuePointerEvent(sdlPointer, mouseState, newx, newy, 0);
-				break;
-			case SDL_MOUSEBUTTONDOWN:
-				switch(event.button.button)
-				{
-					case 1:
-						buttonState=KD_BUTTON_1;
-						break;
-					case 2:
-						buttonState=KD_BUTTON_2;
-						break;
-					case 3:
-						buttonState=KD_BUTTON_3;
-						break;
-				}
-				mouseState|=buttonState;
-				KdEnqueuePointerEvent(sdlPointer, mouseState|KD_MOUSE_DELTA, 0, 0, 0);
-				break;
-			case SDL_MOUSEBUTTONUP:
-				switch(event.button.button)
-				{
-					case 1:
-						buttonState=KD_BUTTON_1;
-						break;
-					case 2:
-						buttonState=KD_BUTTON_2;
-						break;
-					case 3:
-						buttonState=KD_BUTTON_3;
-						break;
-				}
-				mouseState &= ~buttonState;
-				KdEnqueuePointerEvent(sdlPointer, mouseState|KD_MOUSE_DELTA, 0, 0, 0);
-				break;
-			case SDL_KEYDOWN:
-			case SDL_KEYUP:
-                //We want keycodes in SDL 0->127 and 255+, but X only wants 8-255.
-                //so we map 255+ to 127+ by subtracting 127
-			    keyToPass = event.key.keysym.sym > 255 ? event.key.keysym.sym - 127 :
-					event.key.keysym.sym;
-				
-			        KdEnqueueKeyboardEvent (sdlKeyboard, keyToPass,
-					event.type==SDL_KEYUP);
-				break;
+  static int buttonState=0;
+  int keyToPass, newx, newy;
+  SDL_Event event;
+  SDL_ShowCursor(FALSE);
 
-			case SDL_QUIT:
-				/* this should never happen */
-				SDL_Quit();
-		}
-	}
+  /* get the mouse state */
+  while ( SDL_PollEvent(&event) ) {
+
+    // If we haven't initialized the screen yet, nothing to do here.
+    // We still loop through the PollEvents (calling PumpEvents internally)
+    // to keep things chugging along.
+    if (screen_width <= 0 || screen_height <= 0)
+      continue;
+
+    switch (event.type) {
+      case SDL_MOUSEMOTION:
+        //Interpret mouse coordinates differently
+        //depending on the screen orientation
+        if ( isPortraitOrientation )
+        {
+          newx = event.motion.x;
+          newy = event.motion.y;
+        }
+        else
+        {
+          newx = event.motion.y;
+          newy = screen_width - event.motion.x;
+        }
+        KdEnqueuePointerEvent(sdlPointer, mouseState, newx, newy, 0);
+        break;
+      case SDL_MOUSEBUTTONDOWN:
+        switch(event.button.button)
+        {
+          case 1:
+            buttonState=KD_BUTTON_1;
+            break;
+          case 2:
+            buttonState=KD_BUTTON_2;
+            break;
+          case 3:
+            buttonState=KD_BUTTON_3;
+            break;
+        }
+        mouseState|=buttonState;
+        KdEnqueuePointerEvent(sdlPointer, mouseState|KD_MOUSE_DELTA, 0, 0, 0);
+        break;
+      case SDL_MOUSEBUTTONUP:
+        switch(event.button.button)
+        {
+          case 1:
+            buttonState=KD_BUTTON_1;
+            break;
+          case 2:
+            buttonState=KD_BUTTON_2;
+            break;
+          case 3:
+            buttonState=KD_BUTTON_3;
+            break;
+        }
+        mouseState &= ~buttonState;
+        KdEnqueuePointerEvent(sdlPointer, mouseState|KD_MOUSE_DELTA, 0, 0, 0);
+        break;
+      case SDL_KEYDOWN:
+      case SDL_KEYUP:
+        //We want keycodes in SDL 0->127 and 255+, but X only wants 8-255.
+        //so we map 255+ to 127+ by subtracting 127
+        keyToPass = event.key.keysym.sym > 255 ? event.key.keysym.sym - 127 :
+          event.key.keysym.sym;
+
+        KdEnqueueKeyboardEvent (sdlKeyboard, keyToPass,
+            event.type==SDL_KEYUP);
+        break;
+
+      case SDL_QUIT:
+        /* this should never happen */
+        SDL_Quit();
+    }
+  }
 }
 
 static int xsdlInit(void)
