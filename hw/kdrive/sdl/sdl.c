@@ -651,9 +651,6 @@ void GL_Render( struct SdlGLESDriver * driver, UpdateRect_t U )
         U.x1, U.x2, U.y1, U.y2 );
 
     //Draw the buffer to the screen
-    glClear( GL_COLOR_BUFFER_BIT );
-    checkError();
-
     glUseProgram ( programObject );
     checkError();
 
