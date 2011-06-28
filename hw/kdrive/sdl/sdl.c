@@ -77,6 +77,14 @@ static void checkError()
 #define checkError()
 #endif
 
+#ifdef DEBUG
+#define dprintf(fmt, args...) \
+  do { fprintf(stderr, "Xsdl: " fmt, ##args); } while(0)
+#else
+#define dprintf(fmt, args...) \
+  do { } while(0)
+#endif
+
 struct SdlGLESDriver;
 
 void GL_Init(void);
@@ -213,9 +221,7 @@ static Bool sdlScreenInit(KdScreenInfo *screen)
 	struct SdlGLESDriver *sdlGLESDriver=calloc(1, sizeof(struct SdlGLESDriver));
     SDL_Surface * s = NULL;
 
-#ifdef DEBUG
-	printf("sdlScreenInit()\n");
-#endif
+	dprintf("sdlScreenInit()\n");
 
   // Override what the user said the resolution should be...
   screen->width = 0;
@@ -223,9 +229,7 @@ static Bool sdlScreenInit(KdScreenInfo *screen)
 
   if (!screen->fb[0].depth)
     screen->fb[0].depth = 32;
-#ifdef DEBUG
-  printf("Attempting for %dx%d/%dbpp mode\n", screen->width, screen->height, screen->fb[0].depth);
-#endif
+  dprintf("Attempting for %dx%d/%dbpp mode\n", screen->width, screen->height, screen->fb[0].depth);
   if ( SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) )
   {
     return FALSE;
@@ -236,9 +240,7 @@ static Bool sdlScreenInit(KdScreenInfo *screen)
   if( s == NULL )
     return FALSE;
 
-#ifdef DEBUG
-  fprintf( stderr, "Set %dx%d/%dbpp mode\n", s->w, s->h, s->format->BitsPerPixel );
-#endif
+  dprintf( "Set %dx%d/%dbpp mode\n", s->w, s->h, s->format->BitsPerPixel );
 
   // Sanity check the dimensions
   if ( s->w <= 0 || s->h <= 0 )
@@ -326,9 +328,7 @@ void *sdlShadowWindow (ScreenPtr pScreen, CARD32 row, CARD32 offset, int mode, C
 	//KdScreenInfo *screen = pScreenPriv->screen;
 	//struct SdlDriver *sdlDriver=screen->driver;
 	//*size=(sdlDriver->screen->w*sdlDriver->screen->format->BitsPerPixel)/8;
-#ifdef DEBUG
-	//printf("Shadow window()\n");
-#endif
+	//dprintf("Shadow window()\n");
 	//return (void *)((CARD8 *)sdlDriver->screen->pixels + row * (*size) + offset);
 }
 
@@ -408,17 +408,13 @@ void InitCard(char *name)
 {
 	KdCardAttr attr;
         KdCardInfoAdd (&sdlFuncs, &attr, 0);
-#ifdef DEBUG
-	printf("InitCard: %s\n", name);
-#endif
+	dprintf("InitCard: %s\n", name);
 }
 
 void InitOutput(ScreenInfo *pScreenInfo, int argc, char **argv)
 {
 	KdInitOutput(pScreenInfo, argc, argv);
-#ifdef DEBUG
-	printf("InitOutput()\n");
-#endif
+	dprintf("InitOutput()\n");
 }
 
 void InitInput(int argc, char **argv)
@@ -531,9 +527,7 @@ void sdlTimer(void)
 
 static int xsdlInit(void)
 {
-#ifdef DEBUG
-	printf("Calling SDL_Init()\n");
-#endif
+	dprintf("Calling SDL_Init()\n");
     /*
      * Moved actual SDL_Init call to directly above SDL_SetVideoMode()
      */
@@ -648,10 +642,8 @@ void GL_InitTexture( struct SdlGLESDriver * driver )
 
 void GL_Render( struct SdlGLESDriver * driver, UpdateRect_t U )
 {
-#ifdef DEBUG_GL
-    fprintf( stderr, "UPDATE: x1: %ld, x2: %ld, y1: %ld, y2: %ld\n",
+    dprintf( "UPDATE: x1: %ld, x2: %ld, y1: %ld, y2: %ld\n",
         U.x1, U.x2, U.y1, U.y2 );
-#endif
 
     //Draw the buffer to the screen
     glUseProgram ( programObject );
