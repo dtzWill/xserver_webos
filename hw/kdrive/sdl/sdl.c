@@ -295,25 +295,14 @@ void sdlShadowUpdate (ScreenPtr pScreen, shadowBufPtr pBuf)
   struct SdlGLESDriver *sdlDriver=screen->driver;
 
   RegionPtr		damage = shadowDamage(pBuf);
-  long			dwBox = REGION_NUM_RECTS (damage);
-  BoxPtr		pBox = REGION_RECTS (damage);
   BoxPtr		pExtents = REGION_EXTENTS(pScreen, damage);
 
-  fprintf( stderr, "dwBox: %d, %p\n", dwBox, pBox );
-
-  // Might make sense to do multiple blits, but presently we don't have the code for that.
-  // (Not hard, but requires more thinking than I can give this ATM)
-  // So instead we simply use the bounding box for the update, and redraw that area.
-
-  // This shouldn't happen, but if no update regions, our job is easy.
-  if (dwBox == 0) return;
-
+  // Find what was changed, and update that to the screen
   UpdateRect_t U;
   U.x1 = pExtents->x1;
   U.x2 = pExtents->x2;
   U.y1 = pExtents->y1;
   U.y2 = pExtents->y2;
-
 
   GL_Render( sdlDriver, U );
 }
