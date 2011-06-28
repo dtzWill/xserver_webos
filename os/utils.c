@@ -255,13 +255,13 @@ static Bool StillLocking = FALSE;
 static char LockFile[PATH_MAX];
 static Bool nolock = FALSE;
 
-// We set mode to 0664 instead of 0644 because the user itself
+// We set mode to 0777 instead of 0644 because the user itself
 // only exists for this instance of this app's jail.  By extending
 // permissions to the group (jailusers) that all jailed apps run as,
 // we allow them to modify the lock as needed.
 // Note that even for the same app this is true across jail instances.
 // Additionally, we don't chmod it to 0444 anymore, either, for same reason.
-static mode_t lockmode = 0664; // 0644
+static mode_t lockmode = 0777; // 0644
 
 /*
  * LockServer --
