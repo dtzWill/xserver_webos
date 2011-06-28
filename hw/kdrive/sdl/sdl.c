@@ -617,9 +617,6 @@ void GL_InitTexture( struct SdlGLESDriver * driver )
 void GL_Render( struct SdlGLESDriver * driver )
 {
     //Draw the buffer to the screen
-    glClear( GL_COLOR_BUFFER_BIT );
-    checkError();
-
     glUseProgram ( programObject );
     checkError();
 
