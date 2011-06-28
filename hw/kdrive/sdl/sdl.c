@@ -41,6 +41,8 @@ typedef struct
   long x1, x2, y1, y2;
 } UpdateRect_t;
 
+//#define BLIT_FULL_TEXTURE
+
 //XXX: include <pdl.h> ?
 void PDL_SetOrientation( int orientation );
 
@@ -646,9 +648,10 @@ void GL_InitTexture( struct SdlGLESDriver * driver )
 
 void GL_Render( struct SdlGLESDriver * driver, UpdateRect_t U )
 {
-    // Just log the update region for now...
+#ifdef DEBUG_GL
     fprintf( stderr, "UPDATE: x1: %ld, x2: %ld, y1: %ld, y2: %ld\n",
         U.x1, U.x2, U.y1, U.y2 );
+#endif
 
     //Draw the buffer to the screen
     glUseProgram ( programObject );
@@ -669,16 +672,24 @@ void GL_Render( struct SdlGLESDriver * driver, UpdateRect_t U )
     checkError();
 
     //Upload buffer to texture
-    //glTexSubImage2D( GL_TEXTURE_2D,0,
-    //        0,0, driver->width, driver->height,
-    //        GL_RGB,GL_UNSIGNED_BYTE,driver->buffer );
-    char * buf = driver->buffer + U.x1 + U.y1 * driver->width * 3;
+#ifdef BLIT_FULL_TEXTURE
+    glTexSubImage2D( GL_TEXTURE_2D,0,
+            0,0, driver->width, driver->height,
+            GL_RGB,GL_UNSIGNED_BYTE,driver->buffer );
+#else
+    // Only update the modified *lines*
+    // We'd only send the modified rect, but that requires repacking.
+    // Which is
+    // a)more complicated O:)
+    // b)potentially wasteful in terms of CPU/memory copying
+    // c)I'm unclear on what the lifetime of the temporary packed data would be
 
-    // Bleh, does this want the updated data consecutively stored? x.x
-    // That'd explain why it doesn't work. D'oh.
+    // Informally, just sending updated lines is already much faster.
+    char * buf = driver->buffer + U.y1 * driver->width * 3;
     glTexSubImage2D( GL_TEXTURE_2D, 0,
-            U.x1, U.y1, U.x2 - U.x1, U.y2 - U.y1,
+            0, U.y1, driver->width, U.y2 - U.y1,
             GL_RGB, GL_UNSIGNED_BYTE, buf );
+#endif
     checkError();
 
     glUniform1i( samplerLoc, 0 );
