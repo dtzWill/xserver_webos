@@ -44,7 +44,8 @@ typedef struct
 //#define BLIT_FULL_TEXTURE
 
 //XXX: include <pdl.h> ?
-void PDL_SetOrientation( int orientation );
+extern void PDL_SetOrientation( int orientation );
+extern void PDL_Init( char unused );
 
 #define PDL_ORIENTATION_BOTTOM 0
 #define PDL_ORIENTATION_RIGHT 1
@@ -52,6 +53,7 @@ void PDL_SetOrientation( int orientation );
 #define PDL_ORIENTATION_LEFT 3
 
 //#define DEBUG_GL
+#define DEBUG
 
 #ifdef DEBUG_GL
 static void checkError()
@@ -230,10 +232,17 @@ static Bool sdlScreenInit(KdScreenInfo *screen)
   if (!screen->fb[0].depth)
     screen->fb[0].depth = 32;
   dprintf("Attempting for %dx%d/%dbpp mode\n", screen->width, screen->height, screen->fb[0].depth);
+
+  dprintf("Calling PDL_Init...\n");
+  PDL_Init(0);
+
+  dprintf("Calling SDL_Init...\n");
   if ( SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) )
   {
     return FALSE;
   }
+
+  dprintf("Calling SDL_SetVideoMode...\n");
   s = SDL_SetVideoMode( screen->width, screen->height, screen->fb[0].depth,
       SDL_OPENGLES | SDL_FULLSCREEN );
   fprintf( stderr, "SetVideoMode: %p\n", s );
@@ -502,6 +511,10 @@ void sdlTimer(void)
         //so we map 255+ to 127+ by subtracting 127
         keyToPass = event.key.keysym.sym > 255 ? event.key.keysym.sym - 127 :
           event.key.keysym.sym;
+
+        dprintf("KEY(%d): %d -> %d\n",
+            event.type == SDL_KEYDOWN,
+            event.key.keysym.sym, keyToPass);
 
         KdEnqueueKeyboardEvent (sdlKeyboard, keyToPass,
             event.type==SDL_KEYUP);
