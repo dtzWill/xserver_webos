@@ -53,7 +53,7 @@ extern void PDL_Init( char unused );
 #define PDL_ORIENTATION_LEFT 3
 
 //#define DEBUG_GL
-#define DEBUG
+//#define DEBUG
 
 #ifdef DEBUG_GL
 static void checkError()
