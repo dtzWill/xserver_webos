@@ -53,7 +53,7 @@ extern void PDL_Init( char unused );
 #define PDL_ORIENTATION_LEFT 3
 
 //#define DEBUG_GL
-//#define DEBUG
+#define DEBUG
 
 #ifdef DEBUG_GL
 static void checkError()
@@ -525,6 +525,7 @@ void sdlTimer(void)
         SDL_Quit();
     }
   }
+
 }
 
 static int xsdlInit(void)
@@ -695,7 +696,10 @@ void GL_Render( struct SdlGLESDriver * driver, UpdateRect_t U )
     checkError();
 
     //Push to screen
+    int time = SDL_GetTicks();
     SDL_GL_SwapBuffers();
+    int time2 = SDL_GetTicks();
+    dprintf("SwapBuffers: %d -> %d (%d)\n", time, time2, time2-time);
     checkError();
 
     return;
