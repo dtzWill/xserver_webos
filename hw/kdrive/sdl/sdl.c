@@ -41,7 +41,7 @@ typedef struct
   long x1, x2, y1, y2;
 } UpdateRect_t;
 
-//#define BLIT_FULL_TEXTURE
+// #define BLIT_FULL_TEXTURE
 
 //XXX: include <pdl.h> ?
 extern void PDL_SetOrientation( int orientation );
@@ -603,6 +603,15 @@ void GL_Init(void)
     // Get the sampler location
     samplerLoc = glGetUniformLocation ( programObject, "s_texture" );
     checkError();
+
+    // Yes, use this one.
+    glUseProgram ( programObject );
+    checkError();
+
+    // Set sampler
+    glUniform1i( samplerLoc, 0 );
+    checkError();
+
 }
 
 void GL_InitTexture( struct SdlGLESDriver * driver )
@@ -651,9 +660,6 @@ void GL_Render( struct SdlGLESDriver * driver, UpdateRect_t U )
         U.x1, U.x2, U.y1, U.y2 );
 
     //Draw the buffer to the screen
-    glUseProgram ( programObject );
-    checkError();
-
     glVertexAttribPointer( positionLoc, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(GLfloat), vertexCoords );
     checkError();
     glVertexAttribPointer( texCoordLoc, 2, GL_FLOAT, GL_FALSE, 2*sizeof(GLfloat), texCoords );
@@ -687,9 +693,6 @@ void GL_Render( struct SdlGLESDriver * driver, UpdateRect_t U )
             0, U.y1, driver->width, U.y2 - U.y1,
             GL_RGB, GL_UNSIGNED_BYTE, buf );
 #endif
-    checkError();
-
-    glUniform1i( samplerLoc, 0 );
     checkError();
 
     glDrawElements( GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, indices );
