@@ -229,9 +229,9 @@ static Bool sdlScreenInit(KdScreenInfo *screen)
   screen->width = 0;
   screen->height = 0;
 
-  if (!screen->fb[0].depth)
-    screen->fb[0].depth = 32;
-  dprintf("Attempting for %dx%d/%dbpp mode\n", screen->width, screen->height, screen->fb[0].depth);
+  if (!screen->fb.depth)
+    screen->fb.depth = 32;
+  dprintf("Attempting for %dx%d/%dbpp mode\n", screen->width, screen->height, screen->fb.depth);
 
   dprintf("Calling PDL_Init...\n");
   PDL_Init(0);
@@ -243,7 +243,7 @@ static Bool sdlScreenInit(KdScreenInfo *screen)
   }
 
   dprintf("Calling SDL_SetVideoMode...\n");
-  s = SDL_SetVideoMode( screen->width, screen->height, screen->fb[0].depth,
+  s = SDL_SetVideoMode( screen->width, screen->height, screen->fb.depth,
       SDL_OPENGLES | SDL_FULLSCREEN );
   fprintf( stderr, "SetVideoMode: %p\n", s );
   if( s == NULL )
@@ -275,20 +275,17 @@ static Bool sdlScreenInit(KdScreenInfo *screen)
   sdlGLESDriver->width = screen->width;
   sdlGLESDriver->height = screen->height;
 
-  screen->fb[0].depth= 24;
-  screen->fb[0].visuals=(1<<TrueColor);
-  screen->fb[0].redMask=redMask;
-  screen->fb[0].greenMask=greenMask;
-  screen->fb[0].blueMask=blueMask;
-  screen->fb[0].bitsPerPixel= 24;
+  screen->fb.depth= 24;
+  screen->fb.visuals=(1<<TrueColor);
+  screen->fb.redMask=redMask;
+  screen->fb.greenMask=greenMask;
+  screen->fb.blueMask=blueMask;
+  screen->fb.bitsPerPixel= 24;
   screen->rate=60;
-  screen->memory_base=(CARD8 *)sdlGLESDriver->buffer;
-  screen->memory_size=0;
-  screen->off_screen_base=0;
   screen->driver=sdlGLESDriver;
-  screen->fb[0].byteStride=(screen->width*24)/8;
-  screen->fb[0].pixelStride=screen->width;
-  screen->fb[0].frameBuffer=(CARD8 *)sdlGLESDriver->buffer;
+  screen->fb.byteStride=(screen->width*24)/8;
+  screen->fb.pixelStride=screen->width;
+  screen->fb.frameBuffer=(CARD8 *)sdlGLESDriver->buffer;
   SDL_WM_SetCaption("Freedesktop.org X server (SDLGLES)", NULL);
 
   GL_Init();
