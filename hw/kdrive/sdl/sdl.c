@@ -332,7 +332,7 @@ static Bool sdlCreateRes(ScreenPtr pScreen)
 {
 	KdScreenPriv(pScreen);
 	KdScreenInfo *screen = pScreenPriv->screen;
-	KdShadowFbAlloc(screen, 0, FALSE);
+	KdShadowFbAlloc(screen, 0);
 	KdShadowSet(pScreen, RR_Rotate_0, sdlShadowUpdate, sdlShadowWindow);
 	return TRUE;
 }
@@ -401,9 +401,8 @@ static void sdlMouseDisable (KdPointerInfo *pi)
 
 void InitCard(char *name)
 {
-	KdCardAttr attr;
-        KdCardInfoAdd (&sdlFuncs, &attr, 0);
-	dprintf("InitCard: %s\n", name);
+  KdCardInfoAdd (&sdlFuncs, 0);
+  dprintf("InitCard: %s\n", name);
 }
 
 void InitOutput(ScreenInfo *pScreenInfo, int argc, char **argv)
