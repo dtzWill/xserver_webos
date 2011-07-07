@@ -280,6 +280,9 @@
 /* Define to 1 if you have the <rpcsvc/dbm.h> header file. */
 #undef HAVE_RPCSVC_DBM_H
 
+/* Define to 1 if you have the <SDL/SDL.h> header file. */
+#undef HAVE_SDL_SDL_H
+
 /* Use CommonCrypto SHA1 functions */
 #undef HAVE_SHA1_IN_COMMONCRYPTO
 
@@ -710,6 +713,9 @@
 
 /* Build registry module */
 #undef XREGISTRY
+
+/* Build Xsdl server */
+#undef XSDLSERVER
 
 /* Build SELinux extension */
 #undef XSELINUX

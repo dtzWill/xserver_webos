@@ -688,6 +688,8 @@ BUILD_KDRIVEFBDEVLIB_FALSE
 BUILD_KDRIVEFBDEVLIB_TRUE
 XEPHYR_FALSE
 XEPHYR_TRUE
+XSDLSERVER_FALSE
+XSDLSERVER_TRUE
 KDRIVEFBDEV_FALSE
 KDRIVEFBDEV_TRUE
 TSLIB_FALSE
@@ -706,6 +708,8 @@ KDRIVE_PURE_LIBS
 KDRIVE_CFLAGS
 KDRIVE_PURE_INCS
 KDRIVE_INCS
+XSDL_INCS
+XSDL_LIBS
 XEPHYR_INCS
 XEPHYR_LIBS
 XEPHYR_CFLAGS
@@ -1303,6 +1307,7 @@ enable_standalone_xpbproxy
 enable_xwin
 enable_kdrive
 enable_xephyr
+enable_xsdl
 enable_xfake
 enable_xfbdev
 enable_kdrive_kbd
@@ -1330,20 +1335,12 @@ LDFLAGS
 LIBS
 CPPFLAGS
 CPP
-CPPFLAGS
 PKG_CONFIG
 PKG_CONFIG_PATH
 PKG_CONFIG_LIBDIR
 DOXYGEN
-CC
-LDFLAGS
-LIBS
-CPPFLAGS
 CCAS
 CCASFLAGS
-PKG_CONFIG
-PKG_CONFIG_PATH
-PKG_CONFIG_LIBDIR
 YACC
 YFLAGS
 XMLTO
@@ -1388,10 +1385,7 @@ PCIACCESS_CFLAGS
 PCIACCESS_LIBS
 DGA_CFLAGS
 DGA_LIBS
-DGA_CFLAGS
-DGA_LIBS
 XF86VIDMODE_CFLAGS
-XF86VIDMODE_LIBS
 XF86VIDMODE_LIBS
 XORG_MODULES_CFLAGS
 XORG_MODULES_LIBS
@@ -2118,6 +2112,7 @@ Optional Features:
   --enable-xwin           Build XWin server (default: auto)
   --enable-kdrive         Build kdrive servers (default: no)
   --enable-xephyr         Build the kdrive Xephyr server (default: auto)
+  --enable-xsdl           Build the kdrive Xsdl server (default: auto)
   --enable-xfake          Build the kdrive 'fake' server (default: auto)
   --enable-xfbdev         Build the kdrive framebuffer device server (default:
                           auto)
@@ -2132,7 +2127,7 @@ Optional Features:
   --enable-local-transport
                           Enable os-specific local transport
   --enable-secure-rpc     Enable Secure RPC
-  --enable-docs           Enable building the documentation (yes: yes)
+  --enable-docs           Enable building the documentation (default: yes)
   --enable-devel-docs     Enable building the developer documentation
                           (default: yes)
 
@@ -10880,6 +10875,10 @@ _lt_linker_boilerplate=`cat conftest.err`
 $RM -r conftest*
 
 
+## CAVEAT EMPTOR:
+## There is no encapsulation within the following macros, do not change
+## the running order or otherwise move them around unless you know exactly
+## what you are doing...
 if test -n "$compiler"; then
 
 lt_prog_compiler_no_builtin_flag=
@@ -17890,6 +17889,13 @@ else
   XEPHYR=auto
 fi
 
+# Check whether --enable-xsdl was given.
+if test "${enable_xsdl+set}" = set; then :
+  enableval=$enable_xsdl; XSDL=$enableval
+else
+  XSDL=auto
+fi
+
 # Check whether --enable-xfake was given.
 if test "${enable_xfake+set}" = set; then :
   enableval=$enable_xfake; XFAKE=$enableval
@@ -24597,6 +24603,9 @@ fi
 
 XEPHYR_LIBS=
 XEPHYR_INCS=
+XSDL_LIBS=
+XSDL_INCS=
+XSDL_DIRS=
 
  if test x$KDRIVE = xyes; then
   KDRIVE_TRUE=
@@ -24766,6 +24775,31 @@ fi
 $as_echo "#define TSLIB 1" >>confdefs.h
 
         fi
+    fi
+
+    for ac_header in SDL/SDL.h
+do :
+  ac_fn_c_check_header_mongrel "$LINENO" "SDL/SDL.h" "ac_cv_header_SDL_SDL_h" "$ac_includes_default"
+if test "x$ac_cv_header_SDL_SDL_h" = xyes; then :
+  cat >>confdefs.h <<_ACEOF
+#define HAVE_SDL_SDL_H 1
+_ACEOF
+
+fi
+
+done
+
+    if test x"$ac_cv_header_SDL_SDL_h" = xyes && test "x$XSDL" = xauto; then
+       XSDL=yes
+    fi
+
+    if test x"$XSDL" = xyes; then
+       # PKG_CHECK_MODULES(XSDL_EXTRA, Xfont xau $XDMCP_MODULES)
+
+$as_echo "#define XSDLSERVER 1" >>confdefs.h
+
+       XSDL_LIBS="`sdl-config --libs`"
+       XSDL_INCS="`sdl-config --cflags` $XSERVER_CFLAGS"
     fi
 
     if test "x$KDRIVE_KBD" = xyes; then
@@ -24960,6 +24994,8 @@ fi
 
 
 
+
+
 fi
 
 
@@ -25013,6 +25049,14 @@ fi
 else
   KDRIVEFBDEV_TRUE='#'
   KDRIVEFBDEV_FALSE=
+fi
+
+ if test x"$XSDL" = xyes; then
+  XSDLSERVER_TRUE=
+  XSDLSERVER_FALSE='#'
+else
+  XSDLSERVER_TRUE='#'
+  XSDLSERVER_FALSE=
 fi
 
  if test "x$KDRIVE" = xyes && test "x$XEPHYR" = xyes; then
@@ -25096,7 +25140,7 @@ DIX_CFLAGS="-DHAVE_DIX_CONFIG_H $XSERVER_CFLAGS"
 
 
 
-ac_config_files="$ac_config_files Makefile glx/Makefile include/Makefile composite/Makefile damageext/Makefile dbe/Makefile dix/Makefile doc/Makefile doc/xml/Makefile doc/xml/dtrace/Makefile doc/xml/xserver.ent fb/Makefile record/Makefile config/Makefile mi/Makefile miext/Makefile miext/damage/Makefile miext/shadow/Makefile miext/cw/Makefile miext/rootless/Makefile os/Makefile randr/Makefile render/Makefile xkb/Makefile Xext/Makefile Xi/Makefile xfixes/Makefile exa/Makefile hw/Makefile hw/xfree86/Makefile hw/xfree86/common/Makefile hw/xfree86/common/xf86Build.h hw/xfree86/ddc/Makefile hw/xfree86/dixmods/Makefile hw/xfree86/dixmods/extmod/Makefile hw/xfree86/doc/Makefile hw/xfree86/doc/devel/Makefile hw/xfree86/doc/man/Makefile hw/xfree86/doc/sgml/Makefile hw/xfree86/dri/Makefile hw/xfree86/dri2/Makefile hw/xfree86/exa/Makefile hw/xfree86/fbdevhw/Makefile hw/xfree86/i2c/Makefile hw/xfree86/int10/Makefile hw/xfree86/loader/Makefile hw/xfree86/modes/Makefile hw/xfree86/os-support/Makefile hw/xfree86/os-support/bsd/Makefile hw/xfree86/os-support/bus/Makefile hw/xfree86/os-support/hurd/Makefile hw/xfree86/os-support/misc/Makefile hw/xfree86/os-support/linux/Makefile hw/xfree86/os-support/sco/Makefile hw/xfree86/os-support/solaris/Makefile hw/xfree86/os-support/sysv/Makefile hw/xfree86/parser/Makefile hw/xfree86/ramdac/Makefile hw/xfree86/shadowfb/Makefile hw/xfree86/vbe/Makefile hw/xfree86/vgahw/Makefile hw/xfree86/x86emu/Makefile hw/xfree86/xaa/Makefile hw/xfree86/xf8_16bpp/Makefile hw/xfree86/utils/Makefile hw/xfree86/utils/cvt/Makefile hw/xfree86/utils/gtf/Makefile hw/dmx/config/Makefile hw/dmx/doc/Makefile hw/dmx/examples/Makefile hw/dmx/input/Makefile hw/dmx/glxProxy/Makefile hw/dmx/Makefile hw/vfb/Makefile hw/xnest/Makefile hw/xwin/Makefile hw/xwin/glx/Makefile hw/xquartz/Makefile hw/xquartz/GL/Makefile hw/xquartz/bundle/Makefile hw/xquartz/doc/Makefile hw/xquartz/mach-startup/Makefile hw/xquartz/pbproxy/Makefile hw/xquartz/xpr/Makefile hw/kdrive/Makefile hw/kdrive/ephyr/Makefile hw/kdrive/fake/Makefile hw/kdrive/fbdev/Makefile hw/kdrive/linux/Makefile hw/kdrive/src/Makefile test/Makefile test/xi2/Makefile xorg-server.pc"
+ac_config_files="$ac_config_files Makefile glx/Makefile include/Makefile composite/Makefile damageext/Makefile dbe/Makefile dix/Makefile doc/Makefile doc/xml/Makefile doc/xml/dtrace/Makefile doc/xml/xserver.ent fb/Makefile record/Makefile config/Makefile mi/Makefile miext/Makefile miext/damage/Makefile miext/shadow/Makefile miext/cw/Makefile miext/rootless/Makefile os/Makefile randr/Makefile render/Makefile xkb/Makefile Xext/Makefile Xi/Makefile xfixes/Makefile exa/Makefile hw/Makefile hw/xfree86/Makefile hw/xfree86/common/Makefile hw/xfree86/common/xf86Build.h hw/xfree86/ddc/Makefile hw/xfree86/dixmods/Makefile hw/xfree86/dixmods/extmod/Makefile hw/xfree86/doc/Makefile hw/xfree86/doc/devel/Makefile hw/xfree86/doc/man/Makefile hw/xfree86/doc/sgml/Makefile hw/xfree86/dri/Makefile hw/xfree86/dri2/Makefile hw/xfree86/exa/Makefile hw/xfree86/fbdevhw/Makefile hw/xfree86/i2c/Makefile hw/xfree86/int10/Makefile hw/xfree86/loader/Makefile hw/xfree86/modes/Makefile hw/xfree86/os-support/Makefile hw/xfree86/os-support/bsd/Makefile hw/xfree86/os-support/bus/Makefile hw/xfree86/os-support/hurd/Makefile hw/xfree86/os-support/misc/Makefile hw/xfree86/os-support/linux/Makefile hw/xfree86/os-support/sco/Makefile hw/xfree86/os-support/solaris/Makefile hw/xfree86/os-support/sysv/Makefile hw/xfree86/parser/Makefile hw/xfree86/ramdac/Makefile hw/xfree86/shadowfb/Makefile hw/xfree86/vbe/Makefile hw/xfree86/vgahw/Makefile hw/xfree86/x86emu/Makefile hw/xfree86/xaa/Makefile hw/xfree86/xf8_16bpp/Makefile hw/xfree86/utils/Makefile hw/xfree86/utils/cvt/Makefile hw/xfree86/utils/gtf/Makefile hw/dmx/config/Makefile hw/dmx/doc/Makefile hw/dmx/examples/Makefile hw/dmx/input/Makefile hw/dmx/glxProxy/Makefile hw/dmx/Makefile hw/vfb/Makefile hw/xnest/Makefile hw/xwin/Makefile hw/xwin/glx/Makefile hw/xquartz/Makefile hw/xquartz/GL/Makefile hw/xquartz/bundle/Makefile hw/xquartz/doc/Makefile hw/xquartz/mach-startup/Makefile hw/xquartz/pbproxy/Makefile hw/xquartz/xpr/Makefile hw/kdrive/Makefile hw/kdrive/ephyr/Makefile hw/kdrive/fake/Makefile hw/kdrive/fbdev/Makefile hw/kdrive/linux/Makefile hw/kdrive/sdl/Makefile hw/kdrive/src/Makefile test/Makefile test/xi2/Makefile xorg-server.pc"
 
 cat >confcache <<\_ACEOF
 # This file is a shell script that caches the results of configure
@@ -25634,6 +25678,10 @@ Usually this means the macro was only invoked conditionally." "$LINENO" 5
 fi
 if test -z "${KDRIVEFBDEV_TRUE}" && test -z "${KDRIVEFBDEV_FALSE}"; then
   as_fn_error $? "conditional \"KDRIVEFBDEV\" was never defined.
+Usually this means the macro was only invoked conditionally." "$LINENO" 5
+fi
+if test -z "${XSDLSERVER_TRUE}" && test -z "${XSDLSERVER_FALSE}"; then
+  as_fn_error $? "conditional \"XSDLSERVER\" was never defined.
 Usually this means the macro was only invoked conditionally." "$LINENO" 5
 fi
 if test -z "${XEPHYR_TRUE}" && test -z "${XEPHYR_FALSE}"; then
@@ -26630,6 +26678,7 @@ do
     "hw/kdrive/fake/Makefile") CONFIG_FILES="$CONFIG_FILES hw/kdrive/fake/Makefile" ;;
     "hw/kdrive/fbdev/Makefile") CONFIG_FILES="$CONFIG_FILES hw/kdrive/fbdev/Makefile" ;;
     "hw/kdrive/linux/Makefile") CONFIG_FILES="$CONFIG_FILES hw/kdrive/linux/Makefile" ;;
+    "hw/kdrive/sdl/Makefile") CONFIG_FILES="$CONFIG_FILES hw/kdrive/sdl/Makefile" ;;
     "hw/kdrive/src/Makefile") CONFIG_FILES="$CONFIG_FILES hw/kdrive/src/Makefile" ;;
     "test/Makefile") CONFIG_FILES="$CONFIG_FILES test/Makefile" ;;
     "test/xi2/Makefile") CONFIG_FILES="$CONFIG_FILES test/xi2/Makefile" ;;
