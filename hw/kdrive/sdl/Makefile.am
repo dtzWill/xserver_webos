@@ -10,7 +10,7 @@ Xsdl_SOURCES = sdl.c
 Xsdl_LDADD = \
 	@KDRIVE_LIBS@                                  \
 	@XSDL_LIBS@                                    \
-	-lGLESv2
+	-lGLESv2 -lpdl
 
 Xsdl_DEPENDENCIES = @KDRIVE_LOCAL_LIBS@
 
