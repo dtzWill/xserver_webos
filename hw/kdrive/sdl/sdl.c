@@ -427,6 +427,11 @@ void InitInput(int argc, char **argv)
         KdInitInput();
 }
 
+void
+CloseInput (void)
+{
+}
+
 void ddxUseMsg(void)
 {
 	KdUseMsg();
