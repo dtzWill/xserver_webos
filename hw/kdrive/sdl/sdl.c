@@ -46,14 +46,19 @@ typedef struct
 //XXX: include <pdl.h> ?
 extern void PDL_SetOrientation( int orientation );
 extern void PDL_Init( char unused );
+extern void PDL_SetKeyboardState(int visible);
 
-#define PDL_ORIENTATION_BOTTOM 0
-#define PDL_ORIENTATION_RIGHT 1
-#define PDL_ORIENTATION_TOP 2
-#define PDL_ORIENTATION_LEFT 3
+ /* the action button below the screen */
+#define PDL_ORIENTATION_0 0
+/* the action button to the left of the screen */
+#define PDL_ORIENTATION_90 1
+/* the action button above the screen */
+#define PDL_ORIENTATION_180 2
+/* the action button to the right of the screen */
+#define PDL_ORIENTATION_270 3
 
 //#define DEBUG_GL
-#define DEBUG
+//#define DEBUG
 
 #ifdef DEBUG_GL
 static void checkError()
@@ -249,26 +254,23 @@ static Bool sdlScreenInit(KdScreenInfo *screen)
   if( s == NULL )
     return FALSE;
 
-  dprintf( "Set %dx%d/%dbpp mode\n", s->w, s->h, s->format->BitsPerPixel );
+  fprintf( stderr, "DEBUG: Set %dx%d/%dbpp mode\n", s->w, s->h, s->format->BitsPerPixel );
 
   // Sanity check the dimensions
   if ( s->w <= 0 || s->h <= 0 )
     return FALSE;
 
-  screen_width  = screen->width = s->w;
-  screen_height = screen->height = s->h;
+  // Swap these around, cause we're displaying in portrait
+  screen_width  = screen->width = s->h;
+  screen_height = screen->height = s->w;
+  // Not sure what this should be, but this value seems to work
+  vertexCoords = land_r_vertexCoords;
+  // It seems that the PDL doco is correct. It should be 270, but 90 works.
+  PDL_SetOrientation(PDL_ORIENTATION_90);
+  fprintf( stderr, "DEBUG: PDL_SetOrientation %d\n", PDL_ORIENTATION_90 );
 
-  isPortraitOrientation = ( s->h < s->w );
-
-  if (isPortraitOrientation)
-    vertexCoords = portrait_vertexCoords;
-  else
-    vertexCoords = land_r_vertexCoords;
-
-  // XXX: Do we need this, since we're just using whatever resolution we were given?
-  //PDL_SetOrientation( isPortraitOrientation ?
-  //    PDL_ORIENTATION_BOTTOM :
-  //    PDL_ORIENTATION_LEFT );
+  PDL_SetKeyboardState(1);
+  fprintf( stderr, "DEBUG: PDL_SetKeyboardState %d\n", 1 );
 
   //Create buffer for rendering into
   sdlGLESDriver->buffer = malloc( s->w * s->h *24 / 8 );
@@ -525,7 +527,6 @@ void sdlTimer(void)
         SDL_Quit();
     }
   }
-
 }
 
 static int xsdlInit(void)
@@ -696,10 +697,7 @@ void GL_Render( struct SdlGLESDriver * driver, UpdateRect_t U )
     checkError();
 
     //Push to screen
-    int time = SDL_GetTicks();
     SDL_GL_SwapBuffers();
-    int time2 = SDL_GetTicks();
-    dprintf("SwapBuffers: %d -> %d (%d)\n", time, time2, time2-time);
     checkError();
 
     return;
