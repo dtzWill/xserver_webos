@@ -37,7 +37,7 @@
 static int screen_width = -1, screen_height = -1;
 static int effective_screen_height = -1;
 
-static int use_keyboard = 1;
+static int use_keyboard = 0;
 
 #define PORTRAIT_KEYBOARD_OFFSET 250
 #define LANDSCAPE_KEYBOARD_OFFSET 250
@@ -479,27 +479,27 @@ void sdlTimer(void)
 
     switch (event.type) {
       case SDL_MOUSEMOTION:
-	switch (deviceOrientation) {
-	case 0:
-	  KdEnqueuePointerEvent(sdlPointer, mouseState,
-				event.motion.x, event.motion.y, 0);
-	  break;
-	case 90:
-	  KdEnqueuePointerEvent(sdlPointer, mouseState,
-				screen_width - event.motion.y, event.motion.x, 0);
-	  break;
-	case 180:
-	  KdEnqueuePointerEvent(sdlPointer, mouseState,
-				screen_width - event.motion.x, effective_screen_height - event.motion.y, 0);
-	  break;
-	case 270:
-	  KdEnqueuePointerEvent(sdlPointer, mouseState,
-				event.motion.y, effective_screen_height - event.motion.x, 0);
-	  break;
-	default:
-	  /* Do nothing */
-	  break;
-	}
+        switch (deviceOrientation) {
+          case 0:
+            KdEnqueuePointerEvent(sdlPointer, mouseState,
+                event.motion.x, event.motion.y, 0);
+            break;
+          case 90:
+            KdEnqueuePointerEvent(sdlPointer, mouseState,
+                screen_width - event.motion.y, event.motion.x, 0);
+            break;
+          case 180:
+            KdEnqueuePointerEvent(sdlPointer, mouseState,
+                screen_width - event.motion.x, effective_screen_height - event.motion.y, 0);
+            break;
+          case 270:
+            KdEnqueuePointerEvent(sdlPointer, mouseState,
+                event.motion.y, effective_screen_height - event.motion.x, 0);
+            break;
+          default:
+            /* Do nothing */
+            break;
+        }
         break;
       case SDL_MOUSEBUTTONDOWN:
         switch(event.button.button)
