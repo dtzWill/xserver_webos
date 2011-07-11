@@ -277,7 +277,7 @@ static Bool sdlScreenInit(KdScreenInfo *screen)
   xAxis = 0; yAxis = 0; zAxis = 0; timeout = 0;
   while (!xAxis && !yAxis && !zAxis && (timeout < 30)) {
     usleep(100000); // Sample at 10 times per second
-    xAxis = SDL_JoystickGetAxis(joystick, 0);                     
+    xAxis = SDL_JoystickGetAxis(joystick, 0);
     yAxis = SDL_JoystickGetAxis(joystick, 1);
     zAxis = SDL_JoystickGetAxis(joystick, 2);
     dprintf("Sample orientation: %d %d %d\n", xAxis, yAxis, zAxis);
