@@ -37,7 +37,7 @@
 static int screen_width = -1, screen_height = -1;
 static int effective_screen_height = -1;
 
-static int use_keyboard = 0;
+static int use_keyboard = 1;
 
 #define PORTRAIT_KEYBOARD_OFFSET 250
 #define LANDSCAPE_KEYBOARD_OFFSET 250
@@ -490,11 +490,11 @@ void sdlTimer(void)
             break;
           case 180:
             KdEnqueuePointerEvent(sdlPointer, mouseState,
-                screen_width - event.motion.x, effective_screen_height - event.motion.y, 0);
+                screen_width - event.motion.x, screen_height - event.motion.y, 0);
             break;
           case 270:
             KdEnqueuePointerEvent(sdlPointer, mouseState,
-                event.motion.y, effective_screen_height - event.motion.x, 0);
+                event.motion.y, screen_height - event.motion.x, 0);
             break;
           default:
             /* Do nothing */
@@ -804,7 +804,7 @@ Bool updateOrientation(int width, int height)
   if (use_keyboard)
   {
     // Change _effective_ height to accomodate keyboard
-    if (deviceOrientation % 180 == 0)
+    if (deviceOrientation % 180)
       effective_screen_height -= PORTRAIT_KEYBOARD_OFFSET;
     else
       effective_screen_height -= LANDSCAPE_KEYBOARD_OFFSET;
