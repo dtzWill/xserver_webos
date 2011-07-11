@@ -35,6 +35,12 @@
 #include "esFunc.h"
 
 static int screen_width = -1, screen_height = -1;
+static int effective_screen_height = -1;
+
+static int use_keyboard = 1;
+
+#define PORTRAIT_KEYBOARD_OFFSET 250
+#define LANDSCAPE_KEYBOARD_OFFSET 250
 
 typedef struct
 {
@@ -46,11 +52,16 @@ typedef struct
 //XXX: include <pdl.h> ?
 extern void PDL_SetOrientation( int orientation );
 extern void PDL_Init( char unused );
+extern void PDL_SetKeyboardState(int visible);
 
-#define PDL_ORIENTATION_BOTTOM 0
-#define PDL_ORIENTATION_RIGHT 1
-#define PDL_ORIENTATION_TOP 2
-#define PDL_ORIENTATION_LEFT 3
+ /* the action button below the screen */
+#define PDL_ORIENTATION_0 0
+/* the action button to the left of the screen */
+#define PDL_ORIENTATION_90 1
+/* the action button above the screen */
+#define PDL_ORIENTATION_180 2
+/* the action button to the right of the screen */
+#define PDL_ORIENTATION_270 3
 
 //#define DEBUG_GL
 //#define DEBUG
@@ -93,6 +104,9 @@ void GL_Init(void);
 void GL_InitTexture( struct SdlGLESDriver * driver );
 void GL_Render( struct SdlGLESDriver * driver, UpdateRect_t U );
 
+void detectOrientation(void);
+Bool updateOrientation(int width, int height);
+
 /*-----------------------------------------------------------------------------
  *  GL variables
  *-----------------------------------------------------------------------------*/
@@ -111,30 +125,39 @@ GLint samplerLoc;
 //We're doing one-to-one texture to screen anyway
 int gl_filter = GL_NEAREST;
 
-//Landscape, keyboard on left.
-float land_l_vertexCoords[] =
+// Landscape, with home button on the right
+float orientation_0_vertexCoords[] =
+{
+    -1, 1,
+    -1, -1,
+    1, 1,
+    1, -1
+};
+
+// Landscape, with home button on the left
+float orientation_180_vertexCoords[] =
+{
+    1, -1,
+    1, 1,
+    -1, -1,
+    -1, 1
+};
+
+// Portrait, with home button at the bottom
+float orientation_90_vertexCoords[] =
 {
     -1, -1,
     1, -1,
     -1, 1,
     1, 1
 };
-
-//Landscape, keyboard on right.
-float land_r_vertexCoords[] =
+// Portrait, with home button at the top
+float orientation_270_vertexCoords[] =
 {
     1, 1,
     -1, 1,
     1, -1,
     -1, -1
-};
-//Portrait
-float portrait_vertexCoords[] =
-{
-    -1, 1,
-    -1, -1,
-    1, 1,
-    1, -1
 };
 
 //Pick an orientation
@@ -150,7 +173,7 @@ float texCoords[] =
     1.0, 1.0
 };
 
-Bool isPortraitOrientation = TRUE;
+int deviceOrientation = 0; // 0, 90, 180, 270
 
 GLushort indices[] = { 0, 1, 2, 1, 2, 3 };
 
@@ -220,10 +243,10 @@ struct SdlGLESDriver
 
 static Bool sdlScreenInit(KdScreenInfo *screen)
 {
-	struct SdlGLESDriver *sdlGLESDriver=calloc(1, sizeof(struct SdlGLESDriver));
-    SDL_Surface * s = NULL;
+  struct SdlGLESDriver *sdlGLESDriver=calloc(1, sizeof(struct SdlGLESDriver));
+  SDL_Surface * s = NULL;
 
-	dprintf("sdlScreenInit()\n");
+  dprintf("sdlScreenInit()\n");
 
   // Override what the user said the resolution should be...
   screen->width = 0;
@@ -237,7 +260,7 @@ static Bool sdlScreenInit(KdScreenInfo *screen)
   PDL_Init(0);
 
   dprintf("Calling SDL_Init...\n");
-  if ( SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) )
+  if ( SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_JOYSTICK ) )
   {
     return FALSE;
   }
@@ -245,7 +268,7 @@ static Bool sdlScreenInit(KdScreenInfo *screen)
   dprintf("Calling SDL_SetVideoMode...\n");
   s = SDL_SetVideoMode( screen->width, screen->height, screen->fb.depth,
       SDL_OPENGLES | SDL_FULLSCREEN );
-  fprintf( stderr, "SetVideoMode: %p\n", s );
+  dprintf("SetVideoMode: %p\n", s );
   if( s == NULL )
     return FALSE;
 
@@ -255,26 +278,23 @@ static Bool sdlScreenInit(KdScreenInfo *screen)
   if ( s->w <= 0 || s->h <= 0 )
     return FALSE;
 
-  screen_width  = screen->width = s->w;
-  screen_height = screen->height = s->h;
+  // Figure out our current orientation
+  detectOrientation();
 
-  isPortraitOrientation = ( s->h < s->w );
+  // Update our state using the detected orientation
+  if (!updateOrientation(s->w, s->h))
+    return FALSE;
 
-  if (isPortraitOrientation)
-    vertexCoords = portrait_vertexCoords;
-  else
-    vertexCoords = land_r_vertexCoords;
-
-  // XXX: Do we need this, since we're just using whatever resolution we were given?
-  //PDL_SetOrientation( isPortraitOrientation ?
-  //    PDL_ORIENTATION_BOTTOM :
-  //    PDL_ORIENTATION_LEFT );
+  dprintf("PDL_SetKeyboardState %d\n", use_keyboard );
+  PDL_SetKeyboardState( use_keyboard );
 
   //Create buffer for rendering into
-  sdlGLESDriver->buffer = malloc( s->w * s->h *24 / 8 );
-  sdlGLESDriver->width = screen->width;
-  sdlGLESDriver->height = screen->height;
+  sdlGLESDriver->buffer = malloc( screen_width * screen_height *24 / 8 );
+  sdlGLESDriver->width = screen_width;
+  sdlGLESDriver->height = screen_height;
 
+  screen->width = screen_width;
+  screen->height = effective_screen_height;
   screen->fb.depth= 24;
   screen->fb.visuals=(1<<TrueColor);
   screen->fb.redMask=redMask;
@@ -283,8 +303,8 @@ static Bool sdlScreenInit(KdScreenInfo *screen)
   screen->fb.bitsPerPixel= 24;
   screen->rate=60;
   screen->driver=sdlGLESDriver;
-  screen->fb.byteStride=(screen->width*24)/8;
-  screen->fb.pixelStride=screen->width;
+  screen->fb.byteStride=(screen_width*24)/8;
+  screen->fb.pixelStride=screen_width;
   screen->fb.frameBuffer=(CARD8 *)sdlGLESDriver->buffer;
   SDL_WM_SetCaption("Freedesktop.org X server (SDLGLES)", NULL);
 
@@ -445,7 +465,7 @@ int ddxProcessArgument(int argc, char **argv, int i)
 void sdlTimer(void)
 {
   static int buttonState=0;
-  int keyToPass, newx, newy;
+  int keyToPass;
   SDL_Event event;
   SDL_ShowCursor(FALSE);
 
@@ -460,19 +480,27 @@ void sdlTimer(void)
 
     switch (event.type) {
       case SDL_MOUSEMOTION:
-        //Interpret mouse coordinates differently
-        //depending on the screen orientation
-        if ( isPortraitOrientation )
-        {
-          newx = event.motion.x;
-          newy = event.motion.y;
+        switch (deviceOrientation) {
+          case 0:
+            KdEnqueuePointerEvent(sdlPointer, mouseState,
+                event.motion.x, event.motion.y, 0);
+            break;
+          case 90:
+            KdEnqueuePointerEvent(sdlPointer, mouseState,
+                screen_width - event.motion.y, event.motion.x, 0);
+            break;
+          case 180:
+            KdEnqueuePointerEvent(sdlPointer, mouseState,
+                screen_width - event.motion.x, screen_height - event.motion.y, 0);
+            break;
+          case 270:
+            KdEnqueuePointerEvent(sdlPointer, mouseState,
+                event.motion.y, screen_height - event.motion.x, 0);
+            break;
+          default:
+            /* Do nothing */
+            break;
         }
-        else
-        {
-          newx = event.motion.y;
-          newy = screen_width - event.motion.x;
-        }
-        KdEnqueuePointerEvent(sdlPointer, mouseState, newx, newy, 0);
         break;
       case SDL_MOUSEBUTTONDOWN:
         switch(event.button.button)
@@ -703,4 +731,88 @@ void GL_Render( struct SdlGLESDriver * driver, UpdateRect_t U )
     checkError();
 
     return;
+}
+
+void detectOrientation(void)
+{
+  int timeout;
+  SDL_Joystick *joystick;
+  Sint16 xAxis, yAxis, zAxis;
+
+  // Read the current accellerometer values
+  joystick = SDL_JoystickOpen(0);
+  xAxis = 0; yAxis = 0; zAxis = 0; timeout = 0;
+  while (!xAxis && !yAxis && !zAxis && (timeout < 30)) {
+    usleep(100000); // Sample at 10 times per second
+    xAxis = SDL_JoystickGetAxis(joystick, 0);
+    yAxis = SDL_JoystickGetAxis(joystick, 1);
+    zAxis = SDL_JoystickGetAxis(joystick, 2);
+    dprintf("Sample orientation: %d %d %d\n", xAxis, yAxis, zAxis);
+    timeout += 1;
+  }
+  SDL_JoystickClose(joystick);
+
+  // Convert it into a device orientation using some heuristics
+  if ((xAxis < -10000) && (yAxis > -25000) && (yAxis < 25000)) {
+    deviceOrientation = 0;
+  }
+  else if ((yAxis > 10000) && (xAxis > -25000) && (xAxis < 25000)) {
+    deviceOrientation = 90;
+  }
+  else if ((xAxis > 10000) && (yAxis > -25000) && (yAxis < 25000)) {
+    deviceOrientation = 180;
+  }
+  else if ((yAxis < -10000) && (xAxis > -25000) && (xAxis < 25000)) {
+    deviceOrientation = 270;
+  }
+}
+
+Bool updateOrientation(int width, int height)
+{
+  switch (deviceOrientation) {
+  case 0:
+    dprintf("Orientation 0\n");
+    screen_width  = width;
+    screen_height = height;
+    vertexCoords = orientation_0_vertexCoords;
+    PDL_SetOrientation(PDL_ORIENTATION_0);
+    break;
+  case 90:
+    dprintf("Orientation 90\n");
+    screen_width  = height;
+    screen_height = width;
+    vertexCoords = orientation_90_vertexCoords;
+    PDL_SetOrientation(PDL_ORIENTATION_90);
+    break;
+  case 180:
+    dprintf("Orientation 180\n");
+    screen_width  = width;
+    screen_height = height;
+    vertexCoords = orientation_180_vertexCoords;
+    PDL_SetOrientation(PDL_ORIENTATION_180);
+    break;
+  case 270:
+    dprintf("Orientation 270\n");
+    screen_width  = height;
+    screen_height = width;
+    vertexCoords = orientation_270_vertexCoords;
+    PDL_SetOrientation(PDL_ORIENTATION_270);
+    break;
+  default:
+    fprintf( stderr, "Invalid deviceOrientation!\n" );
+    return FALSE;
+  }
+
+  effective_screen_height = screen_height;
+
+  if (use_keyboard)
+  {
+    // Change _effective_ height to accomodate keyboard
+    if (deviceOrientation % 180)
+      effective_screen_height -= PORTRAIT_KEYBOARD_OFFSET;
+    else
+      effective_screen_height -= LANDSCAPE_KEYBOARD_OFFSET;
+  }
+
+  return TRUE;
 }
