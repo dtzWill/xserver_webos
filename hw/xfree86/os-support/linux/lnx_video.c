@@ -38,7 +38,6 @@
 #include "xf86Priv.h"
 #include "xf86_OSlib.h"
 #include "xf86OSpriv.h"
-#include "lnx.h"
 #ifdef __alpha__
 #include "shared/xf86Axp.h"
 #endif
@@ -74,15 +73,9 @@ extern int iopl(int __level);
 #endif
 
 #ifdef __alpha__
-
-extern void sethae(unsigned long hae);
-
 # define BUS_BASE bus_base
-
 #else 
-
 #define BUS_BASE (0)
-
 #endif /*  __alpha__ */
 
 /***************************************************************************/
@@ -92,6 +85,10 @@ extern void sethae(unsigned long hae);
 static pointer mapVidMem(int, unsigned long, unsigned long, int);
 static void unmapVidMem(int, pointer, unsigned long);
 #if defined (__alpha__) 
+extern void sethae(unsigned long hae);
+extern unsigned long _bus_base __P ((void)) __attribute__ ((const));
+extern unsigned long _bus_base_sparse __P ((void)) __attribute__ ((const));
+
 static pointer mapVidMemSparse(int, unsigned long, unsigned long, int);
 extern axpDevice lnxGetAXP(void);
 static void unmapVidMemSparse(int, pointer, unsigned long);
@@ -100,7 +97,6 @@ static Bool needSparse;
 static unsigned long hae_thresh;
 static unsigned long hae_mask;
 static unsigned long bus_base;
-static unsigned long sparse_size;
 #endif
 
 #ifdef HAS_MTRR_SUPPORT
@@ -186,7 +182,7 @@ mtrr_cull_wc_region(int screenNum, unsigned long base, unsigned long size,
 
 		/* Found an overlapping region. Delete it. */
 		
-		wcr = xalloc(sizeof(*wcr));
+		wcr = malloc(sizeof(*wcr));
 		if (!wcr)
 			return NULL;
 		wcr->sentry.base = gent.base;
@@ -207,7 +203,7 @@ mtrr_cull_wc_region(int screenNum, unsigned long base, unsigned long size,
 			wcreturn = wcr;
 			gent.regnum--;
 		} else {
-			xfree(wcr);
+			free(wcr);
 			xf86DrvMsgVerb(screenNum, X_WARNING, 0,
 				   "Failed to remove MMIO "
 				   "write-combining range (0x%lx,0x%lx)\n",
@@ -267,7 +263,7 @@ mtrr_add_wc_region(int screenNum, unsigned long base, unsigned long size,
 	if (!mtrr_open(from == X_CONFIG ? 0 : 2))
 		return wcreturn;
 
-	*wcr = curwcr = xalloc(sizeof(**wcr));
+	*wcr = curwcr = malloc(sizeof(**wcr));
 	if (!curwcr)
 	    return wcreturn;
 
@@ -317,7 +313,7 @@ mtrr_add_wc_region(int screenNum, unsigned long base, unsigned long size,
 	}
 	else {
 	        *wcr = curwcr->next;
-		xfree(curwcr);
+		free(curwcr);
 		
 		/* Don't complain about the VGA region: MTRR fixed
 		   regions aren't currently supported, but might be in
@@ -336,14 +332,14 @@ mtrr_undo_wc_region(int screenNum, struct mtrr_wc_region *wcr)
 {
 	struct mtrr_wc_region *p, *prev;
 
-	if (mtrr_fd > 0) {
+	if (mtrr_fd >= 0) {
 		p = wcr;
 		while (p) {
 			if (p->added)
 				ioctl(mtrr_fd, MTRRIOC_DEL_ENTRY, &p->sentry);
 			prev = p;
 			p = p->next;
-			xfree(prev);
+			free(prev);
 		}
 	}
 }
@@ -376,7 +372,6 @@ xf86OSInitVidMem(VidMemInfoPtr pVidMem)
 	  if ((needSparse = (_bus_base_sparse() > 0))) {
 	    hae_thresh = xf86AXPParams[axpSystem].hae_thresh;
 	    hae_mask = xf86AXPParams[axpSystem].hae_mask;
-	    sparse_size = xf86AXPParams[axpSystem].size;
 	  }
 	  bus_base = _bus_base();
 	}
@@ -534,6 +529,8 @@ xf86EnableIO(void)
 		return FALSE;
         }
 # if !defined(__alpha__)
+	/* XXX: this is actually not trapping anything because of iopl(3)
+	 * above */
 	ioperm(0x40,4,0); /* trap access to the timer chip */
 	ioperm(0x60,4,0); /* trap access to the keyboard controller */
 # endif

@@ -43,6 +43,7 @@
 #include "darwin.h"
 #include "darwinEvents.h"
 #include "quartz.h"
+#include "quartzKeyboard.h"
 #include <X11/extensions/applewmconst.h>
 #include "applewmExt.h"
 
@@ -426,8 +427,8 @@
   [[columns objectAtIndex:2] setIdentifier:@"2"];
 	
   [apps_table setDataSource:self];
-  [apps_table selectRow:0 byExtendingSelection:NO];
-	
+  [apps_table selectRowIndexes:[NSIndexSet indexSetWithIndex:0] byExtendingSelection:NO];
+
   [[apps_table window] makeKeyAndOrderFront:sender];
   [apps_table reloadData];
   if(oldapps != nil)
@@ -474,7 +475,7 @@
   [item release];
 	
   [apps_table reloadData];
-  [apps_table selectRow:row byExtendingSelection:NO];
+  [apps_table selectRowIndexes:[NSIndexSet indexSetWithIndex:row] byExtendingSelection:NO];
 }
 
 - (IBAction) apps_table_duplicate:sender
@@ -497,7 +498,7 @@
   [item release];
 	
   [apps_table reloadData];
-  [apps_table selectRow:row+1 byExtendingSelection:NO];
+  [apps_table selectRowIndexes:[NSIndexSet indexSetWithIndex:row+1] byExtendingSelection:NO];
 }
 
 - (IBAction) apps_table_delete:sender
@@ -519,10 +520,10 @@
 	
   row = MIN (row, [table_apps count] - 1);
   if (row >= 0)
-    [apps_table selectRow:row byExtendingSelection:NO];
+    [apps_table selectRowIndexes:[NSIndexSet indexSetWithIndex:row] byExtendingSelection:NO];
 }
 
-- (int) numberOfRowsInTableView:(NSTableView *)tableView
+- (NSInteger) numberOfRowsInTableView:(NSTableView *)tableView
 {
   if (table_apps == nil) return 0;
   
@@ -530,7 +531,7 @@
 }
 
 - (id) tableView:(NSTableView *)tableView
-objectValueForTableColumn:(NSTableColumn *)tableColumn row:(int)row
+objectValueForTableColumn:(NSTableColumn *)tableColumn row:(NSInteger)row
 {
   NSArray *item;
   int col;
@@ -547,7 +548,7 @@ objectValueForTableColumn:(NSTableColumn *)tableColumn row:(int)row
 }
 
 - (void) tableView:(NSTableView *)tableView setObjectValue:(id)object
-    forTableColumn:(NSTableColumn *)tableColumn row:(int)row
+    forTableColumn:(NSTableColumn *)tableColumn row:(NSInteger)row
 {
   NSMutableArray *item;
   int col;
@@ -608,13 +609,13 @@ objectValueForTableColumn:(NSTableColumn *)tableColumn row:(int)row
 }
 
 - (IBAction) enable_fullscreen_changed:sender {
-    int value = ![enable_fullscreen intValue];
+    XQuartzRootlessDefault = ![enable_fullscreen intValue];
 
-    [enable_fullscreen_menu setEnabled:!value];
+    [enable_fullscreen_menu setEnabled:!XQuartzRootlessDefault];
 
-    DarwinSendDDXEvent(kXquartzSetRootless, 1, value);
+    DarwinSendDDXEvent(kXquartzSetRootless, 1, XQuartzRootlessDefault);
 
-    [NSApp prefs_set_boolean:@PREFS_ROOTLESS value:value];
+    [NSApp prefs_set_boolean:@PREFS_ROOTLESS value:XQuartzRootlessDefault];
     [NSApp prefs_synchronize];
 }
 
@@ -630,49 +631,69 @@ objectValueForTableColumn:(NSTableColumn *)tableColumn row:(int)row
 
 - (IBAction)prefs_changed:sender
 {
-    BOOL pbproxy_active;
+    if(!sender)
+        return;
+    
+    if(sender == fake_buttons) {
+        darwinFakeButtons = [fake_buttons intValue];
+        [NSApp prefs_set_boolean:@PREFS_FAKEBUTTONS value:darwinFakeButtons];
+    } else if(sender == use_sysbeep) {
+        XQuartzUseSysBeep = [use_sysbeep intValue];
+        [NSApp prefs_set_boolean:@PREFS_SYSBEEP value:XQuartzUseSysBeep];
+    } else if(sender == enable_keyequivs) {
+        XQuartzEnableKeyEquivalents =  [enable_keyequivs intValue];
+        [NSApp prefs_set_boolean:@PREFS_KEYEQUIVS value:XQuartzEnableKeyEquivalents];
+    } else if(sender == sync_keymap) {
+        darwinSyncKeymap = [sync_keymap intValue];
+        [NSApp prefs_set_boolean:@PREFS_SYNC_KEYMAP value:darwinSyncKeymap];
+    } else if(sender == enable_fullscreen_menu) {
+        XQuartzFullscreenMenu = [enable_fullscreen_menu intValue];
+        [NSApp prefs_set_boolean:@PREFS_FULLSCREEN_MENU value:XQuartzFullscreenMenu];
+    } else if(sender == option_sends_alt) {
+        BOOL prev_opt_sends_alt = XQuartzOptionSendsAlt;
+        
+        XQuartzOptionSendsAlt = [option_sends_alt intValue];
+        [NSApp prefs_set_boolean:@PREFS_OPTION_SENDS_ALT value:XQuartzOptionSendsAlt];
 
-    darwinFakeButtons = [fake_buttons intValue];
-    quartzUseSysBeep = [use_sysbeep intValue];
-    X11EnableKeyEquivalents = [enable_keyequivs intValue];
-    darwinSyncKeymap = [sync_keymap intValue];
-    quartzFullscreenMenu = [enable_fullscreen_menu intValue];
+        if(prev_opt_sends_alt != XQuartzOptionSendsAlt)
+            QuartsResyncKeymap(TRUE);
+    } else if(sender == click_through) {
+        [NSApp prefs_set_boolean:@PREFS_CLICK_THROUGH value:[click_through intValue]];
+    } else if(sender == focus_follows_mouse) {
+        [NSApp prefs_set_boolean:@PREFS_FFM value:[focus_follows_mouse intValue]];
+    } else if(sender == focus_on_new_window) {
+        [NSApp prefs_set_boolean:@PREFS_FOCUS_ON_NEW_WINDOW value:[focus_on_new_window intValue]];
+    } else if(sender == enable_auth) {
+        [NSApp prefs_set_boolean:@PREFS_NO_AUTH value:![enable_auth intValue]];
+    } else if(sender == enable_tcp) {
+        [NSApp prefs_set_boolean:@PREFS_NO_TCP value:![enable_tcp intValue]];
+    } else if(sender == depth) {
+        [NSApp prefs_set_integer:@PREFS_DEPTH value:[depth selectedTag]];
+    } else if(sender == sync_pasteboard) {
+        BOOL pbproxy_active = [sync_pasteboard intValue];
+        [NSApp prefs_set_boolean:@PREFS_SYNC_PB value:pbproxy_active];
 
-    /* after adding prefs here, also add to [X11Application read_defaults]
-     and prefs_show */
+        [sync_pasteboard_to_clipboard setEnabled:pbproxy_active];
+        [sync_pasteboard_to_primary setEnabled:pbproxy_active];
+        [sync_clipboard_to_pasteboard setEnabled:pbproxy_active];
+        [sync_primary_immediately setEnabled:pbproxy_active];
 
-    [NSApp prefs_set_boolean:@PREFS_FAKEBUTTONS value:darwinFakeButtons];
-    [NSApp prefs_set_boolean:@PREFS_SYSBEEP value:quartzUseSysBeep];
-    [NSApp prefs_set_boolean:@PREFS_KEYEQUIVS value:X11EnableKeyEquivalents];
-    [NSApp prefs_set_boolean:@PREFS_SYNC_KEYMAP value:darwinSyncKeymap];
-    [NSApp prefs_set_boolean:@PREFS_FULLSCREEN_MENU value:quartzFullscreenMenu];
-    [NSApp prefs_set_boolean:@PREFS_CLICK_THROUGH value:[click_through intValue]];
-    [NSApp prefs_set_boolean:@PREFS_FFM value:[focus_follows_mouse intValue]];
-    [NSApp prefs_set_boolean:@PREFS_FOCUS_ON_NEW_WINDOW value:[focus_on_new_window intValue]];
-    [NSApp prefs_set_boolean:@PREFS_NO_AUTH value:![enable_auth intValue]];
-    [NSApp prefs_set_boolean:@PREFS_NO_TCP value:![enable_tcp intValue]];
-    [NSApp prefs_set_integer:@PREFS_DEPTH value:[depth selectedTag]];
-
-    pbproxy_active = [sync_pasteboard intValue];
-
-    [NSApp prefs_set_boolean:@PREFS_SYNC_PB value:pbproxy_active];
-    [NSApp prefs_set_boolean:@PREFS_SYNC_PB_TO_CLIPBOARD value:[sync_pasteboard_to_clipboard intValue]];
-    [NSApp prefs_set_boolean:@PREFS_SYNC_PB_TO_PRIMARY value:[sync_pasteboard_to_primary intValue]];
-    [NSApp prefs_set_boolean:@PREFS_SYNC_CLIPBOARD_TO_PB value:[sync_clipboard_to_pasteboard intValue]];
-    [NSApp prefs_set_boolean:@PREFS_SYNC_PRIMARY_ON_SELECT value:[sync_primary_immediately intValue]];
+        // setEnabled doesn't do this...
+        [sync_text1 setTextColor:pbproxy_active ? [NSColor controlTextColor] : [NSColor disabledControlTextColor]];
+        [sync_text2 setTextColor:pbproxy_active ? [NSColor controlTextColor] : [NSColor disabledControlTextColor]];
+    } else if(sender == sync_pasteboard_to_clipboard) {
+        [NSApp prefs_set_boolean:@PREFS_SYNC_PB_TO_CLIPBOARD value:[sync_pasteboard_to_clipboard intValue]];
+    } else if(sender == sync_pasteboard_to_primary) {
+        [NSApp prefs_set_boolean:@PREFS_SYNC_PB_TO_PRIMARY value:[sync_pasteboard_to_primary intValue]];
+    } else if(sender == sync_clipboard_to_pasteboard) {
+        [NSApp prefs_set_boolean:@PREFS_SYNC_CLIPBOARD_TO_PB value:[sync_clipboard_to_pasteboard intValue]];
+    } else if(sender == sync_primary_immediately) {
+        [NSApp prefs_set_boolean:@PREFS_SYNC_PRIMARY_ON_SELECT value:[sync_primary_immediately intValue]];
+    }
 
     [NSApp prefs_synchronize];
-
-    [sync_pasteboard_to_clipboard setEnabled:pbproxy_active];
-    [sync_pasteboard_to_primary setEnabled:pbproxy_active];
-    [sync_clipboard_to_pasteboard setEnabled:pbproxy_active];
-    [sync_primary_immediately setEnabled:pbproxy_active];
     
-    // setEnabled doesn't do this...
-    [sync_text1 setTextColor:pbproxy_active ? [NSColor controlTextColor] : [NSColor disabledControlTextColor]];
-    [sync_text2 setTextColor:pbproxy_active ? [NSColor controlTextColor] : [NSColor disabledControlTextColor]];
-    
-	DarwinSendDDXEvent(kXquartzReloadPreferences, 0);
+    DarwinSendDDXEvent(kXquartzReloadPreferences, 0);
 }
 
 - (IBAction) prefs_show:sender
@@ -680,9 +701,10 @@ objectValueForTableColumn:(NSTableColumn *)tableColumn row:(int)row
     BOOL pbproxy_active = [NSApp prefs_get_boolean:@PREFS_SYNC_PB default:YES];
     
     [fake_buttons setIntValue:darwinFakeButtons];
-    [use_sysbeep setIntValue:quartzUseSysBeep];
-    [enable_keyequivs setIntValue:X11EnableKeyEquivalents];
+    [use_sysbeep setIntValue:XQuartzUseSysBeep];
+    [enable_keyequivs setIntValue:XQuartzEnableKeyEquivalents];
     [sync_keymap setIntValue:darwinSyncKeymap];
+    [option_sends_alt setIntValue:XQuartzOptionSendsAlt];
     [click_through setIntValue:[NSApp prefs_get_boolean:@PREFS_CLICK_THROUGH default:NO]];
     [focus_follows_mouse setIntValue:[NSApp prefs_get_boolean:@PREFS_FFM default:NO]];
     [focus_on_new_window setIntValue:[NSApp prefs_get_boolean:@PREFS_FOCUS_ON_NEW_WINDOW default:YES]];
@@ -707,9 +729,9 @@ objectValueForTableColumn:(NSTableColumn *)tableColumn row:(int)row
     [sync_text1 setTextColor:pbproxy_active ? [NSColor controlTextColor] : [NSColor disabledControlTextColor]];
     [sync_text2 setTextColor:pbproxy_active ? [NSColor controlTextColor] : [NSColor disabledControlTextColor]];
 	
-    [enable_fullscreen setIntValue:!quartzEnableRootless];
-    [enable_fullscreen_menu setEnabled:!quartzEnableRootless];
-    [enable_fullscreen_menu setIntValue:quartzFullscreenMenu];
+    [enable_fullscreen setIntValue:!XQuartzRootlessDefault];
+    [enable_fullscreen_menu setEnabled:!XQuartzRootlessDefault];
+    [enable_fullscreen_menu setIntValue:XQuartzFullscreenMenu];
     
     [prefs_panel makeKeyAndOrderFront:sender];
 }
@@ -730,7 +752,7 @@ objectValueForTableColumn:(NSTableColumn *)tableColumn row:(int)row
   NSMenu *menu = [item menu];
     
   if (item == toggle_fullscreen_item)
-    return !quartzEnableRootless;
+    return !XQuartzIsRootless;
   else if (menu == [X11App windowsMenu] || menu == dock_menu
 	   || (menu == [x11_about_item menu] && [item tag] == 42))
     return (AppleWMSelectedEvents () & AppleWMControllerNotifyMask) != 0;

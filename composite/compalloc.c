@@ -2,29 +2,23 @@
  * Copyright © 2006 Sun Microsystems, Inc.  All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the
- * "Software"), to deal in the Software without restriction, including
- * without limitation the rights to use, copy, modify, merge, publish,
- * distribute, and/or sell copies of the Software, and to permit persons
- * to whom the Software is furnished to do so, provided that the above
- * copyright notice(s) and this permission notice appear in all copies of
- * the Software and that both the above copyright notice(s) and this
- * permission notice appear in supporting documentation.
+ * copy of this software and associated documentation files (the "Software"),
+ * to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
+ * and/or sell copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following conditions:
  *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
- * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT
- * OF THIRD PARTY RIGHTS. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
- * HOLDERS INCLUDED IN THIS NOTICE BE LIABLE FOR ANY CLAIM, OR ANY SPECIAL
- * INDIRECT OR CONSEQUENTIAL DAMAGES, OR ANY DAMAGES WHATSOEVER RESULTING
- * FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT,
- * NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION
- * WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ * The above copyright notice and this permission notice (including the next
+ * paragraph) shall be included in all copies or substantial portions of the
+ * Software.
  *
- * Except as contained in this notice, the name of a copyright holder
- * shall not be used in advertising or otherwise to promote the sale, use
- * or other dealings in this Software without prior written authorization
- * of the copyright holder.
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+ * DEALINGS IN THE SOFTWARE.
  *
  * Copyright © 2003 Keith Packard
  *
@@ -105,7 +99,7 @@ compRedirectWindow (ClientPtr pClient, WindowPtr pWin, int update)
      * The client *could* allocate multiple, but while supported,
      * it is not expected to be common
      */
-    ccw = xalloc (sizeof (CompClientWindowRec));
+    ccw = malloc(sizeof (CompClientWindowRec));
     if (!ccw)
 	return BadAlloc;
     ccw->id = FakeClientID (pClient->index);
@@ -115,10 +109,10 @@ compRedirectWindow (ClientPtr pClient, WindowPtr pWin, int update)
      */
     if (!cw)
     {
-	cw = xalloc (sizeof (CompWindowRec));
+	cw = malloc(sizeof (CompWindowRec));
 	if (!cw)
 	{
-	    xfree (ccw);
+	    free(ccw);
 	    return BadAlloc;
 	}
 	cw->damage = DamageCreate (compReportDamage,
@@ -129,8 +123,8 @@ compRedirectWindow (ClientPtr pClient, WindowPtr pWin, int update)
 				   pWin);
 	if (!cw->damage)
 	{
-	    xfree (ccw);
-	    xfree (cw);
+	    free(ccw);
+	    free(cw);
 	    return BadAlloc;
 	}
 	if (wasMapped)
@@ -140,7 +134,7 @@ compRedirectWindow (ClientPtr pClient, WindowPtr pWin, int update)
 	    EnableMapUnmapEvents (pWin);
 	}
 
-	REGION_NULL (pScreen, &cw->borderClip);
+	RegionNull(&cw->borderClip);
 	cw->borderClipX = 0;
 	cw->borderClipY = 0;
 	cw->update = CompositeRedirectAutomatic;
@@ -149,6 +143,7 @@ compRedirectWindow (ClientPtr pClient, WindowPtr pWin, int update)
 	cw->oldy = COMP_ORIGIN_INVALID;
 	cw->damageRegistered = FALSE;
 	cw->damaged = FALSE;
+	cw->pOldPixmap = NullPixmap;
 	dixSetPrivate(&pWin->devPrivates, CompWindowPrivateKey, cw);
     }
     ccw->next = cw->clients;
@@ -213,7 +208,7 @@ compFreeClientWindow (WindowPtr pWin, XID id)
 	    *prev = ccw->next;
 	    if (ccw->update == CompositeRedirectManual)
 		cw->update = CompositeRedirectAutomatic;
-	    xfree (ccw);
+	    free(ccw);
 	    break;
 	}
     }
@@ -232,10 +227,10 @@ compFreeClientWindow (WindowPtr pWin, XID id)
 	if (cw->damage)
 	    DamageDestroy (cw->damage);
 	
-	REGION_UNINIT (pScreen, &cw->borderClip);
+	RegionUninit(&cw->borderClip);
     
 	dixSetPrivate(&pWin->devPrivates, CompWindowPrivateKey, NULL);
-	xfree (cw);
+	free(cw);
     }
     else if (cw->update == CompositeRedirectAutomatic &&
 	     !cw->damageRegistered && pWin->redirectDraw != RedirectDrawNone)
@@ -243,7 +238,7 @@ compFreeClientWindow (WindowPtr pWin, XID id)
 	DamageRegister (&pWin->drawable, cw->damage);
 	cw->damageRegistered = TRUE;
 	pWin->redirectDraw = RedirectDrawAutomatic;
-	DamageRegionAppend(&pWin->drawable, &pWin->borderSize);
+	DamageDamageRegion(&pWin->drawable, &pWin->borderSize);
     }
     if (wasMapped && !pWin->mapped)
     {
@@ -301,7 +296,7 @@ compRedirectSubwindows (ClientPtr pClient, WindowPtr pWin, int update)
      * The client *could* allocate multiple, but while supported,
      * it is not expected to be common
      */
-    ccw = xalloc (sizeof (CompClientWindowRec));
+    ccw = malloc(sizeof (CompClientWindowRec));
     if (!ccw)
 	return BadAlloc;
     ccw->id = FakeClientID (pClient->index);
@@ -311,10 +306,10 @@ compRedirectSubwindows (ClientPtr pClient, WindowPtr pWin, int update)
      */
     if (!csw)
     {
-	csw = xalloc (sizeof (CompSubwindowsRec));
+	csw = malloc(sizeof (CompSubwindowsRec));
 	if (!csw)
 	{
-	    xfree (ccw);
+	    free(ccw);
 	    return BadAlloc;
 	}
 	csw->update = CompositeRedirectAutomatic;
@@ -333,10 +328,10 @@ compRedirectSubwindows (ClientPtr pClient, WindowPtr pWin, int update)
 		(void) compUnredirectWindow (pClient, pChild, update);
 	    if (!csw->clients)
 	    {
-		xfree (csw);
+		free(csw);
 		dixSetPrivate(&pWin->devPrivates, CompSubwindowsPrivateKey, 0);
 	    }
-	    xfree (ccw);
+	    free(ccw);
 	    return ret;
 	}
     }
@@ -397,7 +392,7 @@ compFreeClientSubwindows (WindowPtr pWin, XID id)
 	    for (pChild = pWin->lastChild; pChild; pChild = pChild->prevSib)
 		(void) compUnredirectWindow (pClient, pChild, ccw->update);
 
-	    xfree (ccw);
+	    free(ccw);
 	    break;
 	}
     }
@@ -408,7 +403,7 @@ compFreeClientSubwindows (WindowPtr pWin, XID id)
     if (!csw->clients)
     {
 	dixSetPrivate(&pWin->devPrivates, CompSubwindowsPrivateKey, NULL);
-	xfree (csw);
+	free(csw);
     }
 }
 
@@ -503,10 +498,11 @@ compNewPixmap (WindowPtr pWin, int x, int y, int w, int h)
 	 */
 	if (pGC)
 	{
-	    XID val = IncludeInferiors;
+	    ChangeGCVal val;
+	    val.val = IncludeInferiors;
 	    
 	    ValidateGC(&pPixmap->drawable, pGC);
-	    dixChangeGC (serverClient, pGC, GCSubwindowMode, &val, NULL);
+	    ChangeGC (serverClient, pGC, GCSubwindowMode, &val);
 	    (*pGC->ops->CopyArea) (&pParent->drawable,
 				   &pPixmap->drawable,
 				   pGC,
@@ -603,7 +599,7 @@ compFreePixmap (WindowPtr pWin)
      * case correctly.  Unmap adds the window borderClip to the
      * parent exposed area; regions beyond the parent cause crashes
      */
-    REGION_COPY (pScreen, &pWin->borderClip, &cw->borderClip);
+    RegionCopy(&pWin->borderClip, &cw->borderClip);
     pRedirectPixmap = (*pScreen->GetWindowPixmap) (pWin);
     pParentPixmap = (*pScreen->GetWindowPixmap) (pWin->parent);
     pWin->redirectDraw = RedirectDrawNone;

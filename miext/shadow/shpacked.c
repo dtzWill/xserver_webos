@@ -46,8 +46,8 @@ shadowUpdatePacked (ScreenPtr	    pScreen,
 {
     RegionPtr	damage = shadowDamage (pBuf);
     PixmapPtr	pShadow = pBuf->pPixmap;
-    int		nbox = REGION_NUM_RECTS (damage);
-    BoxPtr	pbox = REGION_RECTS (damage);
+    int		nbox = RegionNumRects (damage);
+    BoxPtr	pbox = RegionRects (damage);
     FbBits	*shaBase, *shaLine, *sha;
     FbStride	shaStride;
     int		scrBase, scrLine, scr;
@@ -102,8 +102,8 @@ shadowUpdatePacked (ScreenPtr	    pScreen,
 		width -= i;
 		scr += i;
 #define PickBit(a,i)	(((a) >> (i)) & 1)
-		while (i--)
-		    *win++ = *sha++;
+		memcpy(win, sha, i * sizeof(FbBits));
+		sha += i;
 	    }
 	    shaLine += shaStride;
 	    y++;

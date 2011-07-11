@@ -45,6 +45,7 @@
 #include "site.h"
 #include "globals.h"
 #include "dix.h"
+#include "xkbsrv.h"
 
 #include <X11/extensions/XI.h>
 #include <X11/extensions/XIproto.h>
@@ -83,8 +84,7 @@ FILE *debug_log_fp = NULL;
  * X server shared global variables
  */
 int                     darwinScreensFound = 0;
-static int              darwinScreenKeyIndex;
-DevPrivateKey           darwinScreenKey = &darwinScreenKeyIndex;
+DevPrivateKeyRec        darwinScreenKeyRec;
 io_connect_t            darwinParamConnect = 0;
 int                     darwinEventReadFD = -1;
 int                     darwinEventWriteFD = -1;
@@ -96,9 +96,7 @@ int                     darwinMainScreenX = 0;
 int                     darwinMainScreenY = 0;
 
 // parameters read from the command line or user preferences
-unsigned int            darwinDesiredWidth = 0, darwinDesiredHeight = 0;
 int                     darwinDesiredDepth = -1;
-int                     darwinDesiredRefresh = -1;
 int                     darwinSyncKeymap = FALSE;
 
 // modifier masks for faking mouse buttons - ANY of these bits trigger it  (not all)
@@ -186,6 +184,9 @@ static Bool DarwinScreenInit(int index, ScreenPtr pScreen, int argc, char **argv
     Bool        ret;
     DarwinFramebufferPtr dfb;
 
+    if (!dixRegisterPrivateKey(&darwinScreenKeyRec, PRIVATE_SCREEN, 0))
+	return FALSE;
+
     // reset index of found screens for each server generation
     if (index == 0) {
         foundIndex = 0;
@@ -195,7 +196,7 @@ static Bool DarwinScreenInit(int index, ScreenPtr pScreen, int argc, char **argv
     }
 
     // allocate space for private per screen storage
-    dfb = xalloc(sizeof(DarwinFramebufferRec));
+    dfb = malloc(sizeof(DarwinFramebufferRec));
 
     // SCREEN_PRIV(pScreen) = dfb;
     dixSetPrivate(&pScreen->devPrivates, darwinScreenKey, dfb);
@@ -241,11 +242,9 @@ static Bool DarwinScreenInit(int index, ScreenPtr pScreen, int argc, char **argv
         return FALSE;
     }
 
-#ifdef RENDER
     if (! fbPictureInit(pScreen, 0, 0)) {
         return FALSE;
     }
-#endif
 
 #ifdef MITSHM
     ShmRegisterFbFuncs(pScreen);
@@ -265,8 +264,8 @@ static Bool DarwinScreenInit(int index, ScreenPtr pScreen, int argc, char **argv
         return FALSE;
     }
 
-    dixScreenOrigins[index].x = dfb->x;
-    dixScreenOrigins[index].y = dfb->y;
+    pScreen->x = dfb->x;
+    pScreen->y = dfb->y;
 
     /*    ErrorF("Screen %d added: %dx%d @ (%d,%d)\n",
 	  index, dfb->width, dfb->height, dfb->x, dfb->y); */
@@ -463,6 +462,11 @@ int DarwinParseModifierList(const char *constmodifiers, int separatelr)
  */
 void InitInput( int argc, char **argv )
 {
+    XkbRMLVOSet rmlvo = { .rules = "base", .model = "empty", .layout = "empty",
+                          .variant = NULL, .options = NULL };
+    /* We need to really have rules... or something... */
+    XkbSetRulesDflts(&rmlvo);
+
     darwinKeyboard = AddInputDevice(serverClient, DarwinKeybdProc, TRUE);
     RegisterKeyboardDevice( darwinKeyboard );
     darwinKeyboard->name = strdup("keyboard");
@@ -524,16 +528,16 @@ DarwinAdjustScreenOrigins(ScreenInfo *pScreenInfo)
 {
     int i, left, top;
 
-    left = dixScreenOrigins[0].x;
-    top  = dixScreenOrigins[0].y;
+    left = pScreenInfo->screens[0]->x;
+    top  = pScreenInfo->screens[0]->y;
 
     /* Find leftmost screen. If there's a tie, take the topmost of the two. */
     for (i = 1; i < pScreenInfo->numScreens; i++) {
-        if (dixScreenOrigins[i].x < left  ||
-            (dixScreenOrigins[i].x == left && dixScreenOrigins[i].y < top))
+        if (pScreenInfo->screens[i]->x < left  ||
+            (pScreenInfo->screens[i]->x == left && pScreenInfo->screens[i]->y < top))
         {
-            left = dixScreenOrigins[i].x;
-            top = dixScreenOrigins[i].y;
+            left = pScreenInfo->screens[i]->x;
+            top = pScreenInfo->screens[i]->y;
         }
     }
 
@@ -549,10 +553,10 @@ DarwinAdjustScreenOrigins(ScreenInfo *pScreenInfo)
 
     if (darwinMainScreenX != 0 || darwinMainScreenY != 0) {
         for (i = 0; i < pScreenInfo->numScreens; i++) {
-            dixScreenOrigins[i].x -= darwinMainScreenX;
-            dixScreenOrigins[i].y -= darwinMainScreenY;
+            pScreenInfo->screens[i]->x -= darwinMainScreenX;
+            pScreenInfo->screens[i]->y -= darwinMainScreenY;
             DEBUG_LOG("Screen %d placed at X11 coordinate (%d,%d).\n",
-                      i, dixScreenOrigins[i].x, dixScreenOrigins[i].y);
+                      i, pScreenInfo->screens[i]->x, pScreenInfo->screens[i]->y);
         }
     }
 }
@@ -598,7 +602,7 @@ void InitOutput( ScreenInfo *pScreenInfo, int argc, char **argv )
 
 
 /*
- * OsVendorFataError
+ * OsVendorFatalError
  */
 void OsVendorFatalError( void )
 {
@@ -703,28 +707,10 @@ int ddxProcessArgument( int argc, char *argv[], int i )
         return 1;
     }
 
-    if ( !strcmp( argv[i], "-size" ) ) {
-        if ( i >= argc-2 ) {
-            FatalError( "-size must be followed by two numbers\n" );
-        }
-#ifdef OLD_POWERBOOK_G3
-        ErrorF( "Ignoring unsupported -size option on old PowerBook G3\n" );
-#else
-        darwinDesiredWidth = atoi( argv[i+1] );
-        darwinDesiredHeight = atoi( argv[i+2] );
-        ErrorF( "Attempting to use width x height = %i x %i\n",
-                darwinDesiredWidth, darwinDesiredHeight );
-#endif
-        return 3;
-    }
-
     if ( !strcmp( argv[i], "-depth" ) ) {
         if ( i == argc-1 ) {
             FatalError( "-depth must be followed by a number\n" );
         }
-#ifdef OLD_POWERBOOK_G3
-        ErrorF( "Ignoring unsupported -depth option on old PowerBook G3\n");
-#else
         darwinDesiredDepth = atoi( argv[i+1] );
         if(darwinDesiredDepth != -1 &&
            darwinDesiredDepth != 8 &&
@@ -734,20 +720,6 @@ int ddxProcessArgument( int argc, char *argv[], int i )
         }
 
         ErrorF( "Attempting to use pixel depth of %i\n", darwinDesiredDepth );
-#endif
-        return 2;
-    }
-
-    if ( !strcmp( argv[i], "-refresh" ) ) {
-        if ( i == argc-1 ) {
-            FatalError( "-refresh must be followed by a number\n" );
-        }
-#ifdef OLD_POWERBOOK_G3
-        ErrorF( "Ignoring unsupported -refresh option on old PowerBook G3\n");
-#else
-        darwinDesiredRefresh = atoi( argv[i+1] );
-        ErrorF( "Attempting to use refresh rate of %i\n", darwinDesiredRefresh );
-#endif
         return 2;
     }
 
@@ -771,18 +743,13 @@ void ddxUseMsg( void )
     ErrorF("\n");
     ErrorF("Device Dependent Usage:\n");
     ErrorF("\n");
+    ErrorF("-depth <8,15,24> : use this bit depth.\n");
     ErrorF("-fakebuttons : fake a three button mouse with Command and Option keys.\n");
     ErrorF("-nofakebuttons : don't fake a three button mouse.\n");
     ErrorF("-fakemouse2 <modifiers> : fake middle mouse button with modifier keys.\n");
     ErrorF("-fakemouse3 <modifiers> : fake right mouse button with modifier keys.\n");
     ErrorF("  ex: -fakemouse2 \"option,shift\" = option-shift-click is middle button.\n");
     ErrorF("-version : show the server version.\n");
-    ErrorF("\n");
-    ErrorF("\n");
-    ErrorF("Options ignored in rootless mode:\n");
-    ErrorF("-size <height> <width> : use a screen resolution of <height> x <width>.\n");
-    ErrorF("-depth <8,15,24> : use this bit depth.\n");
-    ErrorF("-refresh <rate> : use a monitor refresh rate of <rate> Hz.\n");
     ErrorF("\n");
 }
 
@@ -793,7 +760,7 @@ void ddxUseMsg( void )
  */
 void ddxGiveUp( void )
 {
-    ErrorF( "Quitting Xquartz...\n" );
+    ErrorF( "Quitting Xquartz\n" );
 }
 
 
@@ -806,11 +773,7 @@ void ddxGiveUp( void )
 void AbortDDX( void )
 {
     ErrorF( "   AbortDDX\n" );
-    /*
-     * This is needed for a abnormal server exit, since the normal exit stuff
-     * MUST also be performed (i.e. the vt must be left in a defined state)
-     */
-    ddxGiveUp();
+    OsAbort();
 }
 
 #include "mivalidate.h" // for union _Validate used by windowstr.h
@@ -832,7 +795,7 @@ void AbortDDX( void )
 void
 xf86SetRootClip (ScreenPtr pScreen, int enable)
 {
-    WindowPtr	pWin = WindowTable[pScreen->myNum];
+    WindowPtr	pWin = pScreen->root;
     WindowPtr	pChild;
     Bool	WasViewable = (Bool)(pWin->viewable);
     Bool	anyMarked = TRUE;
@@ -856,8 +819,8 @@ xf86SetRootClip (ScreenPtr pScreen, int enable)
 	    {
 		RegionPtr	borderVisible;
 
-		borderVisible = REGION_CREATE(pScreen, NullBox, 1);
-		REGION_SUBTRACT(pScreen, borderVisible,
+		borderVisible = RegionCreate(NullBox, 1);
+		RegionSubtract(borderVisible,
 				&pWin->borderClip, &pWin->winSize);
 		pWin->valdata->before.borderVisible = borderVisible;
 	    }
@@ -876,13 +839,13 @@ xf86SetRootClip (ScreenPtr pScreen, int enable)
 	box.y1 = 0;
 	box.x2 = pScreen->width;
 	box.y2 = pScreen->height;
-	REGION_RESET(pScreen, &pWin->borderClip, &box);
-	REGION_BREAK (pWin->drawable.pScreen, &pWin->clipList);
+	RegionReset(&pWin->borderClip, &box);
+	RegionBreak(&pWin->clipList);
     }
     else
     {
-	REGION_EMPTY(pScreen, &pWin->borderClip);
-	REGION_BREAK (pWin->drawable.pScreen, &pWin->clipList);
+	RegionEmpty(&pWin->borderClip);
+	RegionBreak(&pWin->clipList);
     }
 
     ResizeChildrenWinSize (pWin, 0, 0, 0, 0);
@@ -891,8 +854,8 @@ xf86SetRootClip (ScreenPtr pScreen, int enable)
     {
 	if (pWin->backStorage)
 	{
-	    pOldClip = REGION_CREATE(pScreen, NullBox, 1);
-	    REGION_COPY(pScreen, pOldClip, &pWin->clipList);
+	    pOldClip = RegionCreate(NullBox, 1);
+	    RegionCopy(pOldClip, &pWin->clipList);
 	}
 
 	if (pWin->firstChild)
@@ -921,7 +884,7 @@ xf86SetRootClip (ScreenPtr pScreen, int enable)
 			     (pWin, 0, 0, pOldClip,
 			      pWin->drawable.x, pWin->drawable.y);
 	if (WasViewable)
-	    REGION_DESTROY(pScreen, pOldClip);
+	    RegionDestroy(pOldClip);
 	if (bsExposed)
 	{
 	    RegionPtr	valExposed = NullRegion;
@@ -930,8 +893,8 @@ xf86SetRootClip (ScreenPtr pScreen, int enable)
 		valExposed = &pWin->valdata->after.exposed;
 	    (*pScreen->WindowExposures) (pWin, valExposed, bsExposed);
 	    if (valExposed)
-		REGION_EMPTY(pScreen, valExposed);
-	    REGION_DESTROY(pScreen, bsExposed);
+		RegionEmpty(valExposed);
+	    RegionDestroy(bsExposed);
 	}
     }
     if (WasViewable)

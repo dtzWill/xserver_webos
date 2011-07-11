@@ -1,5 +1,6 @@
 noinst_LTLIBRARIES = libdix.la libmain.la
 
+AM_CPPFLAGS = -I$(top_srcdir)/include
 AM_CFLAGS = $(DIX_CFLAGS)
 
 libmain_la_SOURCES =    \
@@ -32,6 +33,7 @@ libdix_la_SOURCES = 	\
 	privates.c	\
 	property.c	\
 	ptrveloc.c	\
+	region.c	\
 	registry.c	\
 	resource.c	\
 	selection.c	\
@@ -51,7 +53,7 @@ if XSERVER_DTRACE
 BUILT_SOURCES = Xserver-dtrace.h
 
 Xserver-dtrace.h: $(srcdir)/Xserver.d
-	$(DTRACE) -C -h -o $@ -s $(srcdir)/Xserver.d \
+	$(AM_V_GEN)$(DTRACE) -C -h -o $@ -s $(srcdir)/Xserver.d \
 		|| cp Xserver-dtrace.h.in $@
 
 endif
@@ -59,15 +61,15 @@ endif
 if SPECIAL_DTRACE_OBJECTS
 # Generate dtrace object code for probes in libdix
 dtrace-dix.o: $(top_srcdir)/dix/Xserver.d $(am_libdix_la_OBJECTS)
-	$(DTRACE) -G -C -o $@ -s $(top_srcdir)/dix/Xserver.d $(am_libdix_la_OBJECTS:%.lo=.libs/%.o)
+	$(AM_V_GEN)$(DTRACE) -G -C -o $@ -s $(top_srcdir)/dix/Xserver.d $(am_libdix_la_OBJECTS:%.lo=.libs/%.o)
 
 noinst_PROGRAMS = dix.O
 
 dix.O: dtrace-dix.o $(am_libdix_la_OBJECTS)
-	ld -r -o $@ $(am_libdix_la_OBJECTS:%.lo=.libs/%.o)
+	$(AM_V_GEN)ld -r -o $@ $(am_libdix_la_OBJECTS:%.lo=.libs/%.o)
 endif
 
 dix.c:
 	touch $@
 
-CLEANFILES = dix.c
+CLEANFILES = dix.c Xserver-dtrace.h

@@ -48,6 +48,7 @@ SOFTWARE.
 #ifndef DIX_H
 #define DIX_H
 
+#include "callback.h"
 #include "gc.h"
 #include "window.h"
 #include "input.h"
@@ -82,7 +83,7 @@ SOFTWARE.
     if (!LegalNewID(id,client)) \
     {\
 	client->errorValue = id;\
-        return(BadIDChoice);\
+        return BadIDChoice;\
     }
 
 #define VALIDATE_DRAWABLE_AND_GC(drawID, pDraw, mode)\
@@ -94,7 +95,7 @@ SOFTWARE.
 	if (rc != Success)\
 	    return rc;\
 	if ((pGC->depth != pDraw->depth) || (pGC->pScreen != pDraw->pScreen))\
-	    return (BadMatch);\
+	    return BadMatch;\
     }\
     if (pGC->serialNumber != pDraw->serialNumber)\
 	ValidateGC(pDraw, pGC);
@@ -173,11 +174,6 @@ extern _X_EXPORT void MarkClientException(
 extern _X_HIDDEN Bool CreateConnectionBlock(void);
 /* dixutils.c */
 
-extern _X_EXPORT void CopyISOLatin1Lowered(
-    unsigned char * /*dest*/,
-    unsigned char * /*source*/,
-    int /*length*/);
-
 extern _X_EXPORT int CompareISOLatin1Lowered(
     unsigned char * /*a*/,
     int alen,
@@ -199,6 +195,12 @@ extern _X_EXPORT int dixLookupDrawable(
 
 extern _X_EXPORT int dixLookupGC(
     GCPtr *result,
+    XID id,
+    ClientPtr client,
+    Mask access_mode);
+
+extern _X_EXPORT int dixLookupFontable(
+    FontPtr *result,
     XID id,
     ClientPtr client,
     Mask access_mode);
@@ -298,7 +300,7 @@ extern _X_EXPORT Bool ValidAtom(
 extern _X_EXPORT const char *NameForAtom(
     Atom /*atom*/);
 
-extern _X_EXPORT void AtomError(void);
+extern _X_EXPORT void AtomError(void) _X_NORETURN;
 
 extern _X_EXPORT void FreeAllAtoms(void);
 
@@ -517,36 +519,6 @@ ScreenRestructured (ScreenPtr pScreen);
 
 extern _X_EXPORT int ffs(int i);
 
-/*
- *  callback manager stuff
- */
-
-#ifndef _XTYPEDEF_CALLBACKLISTPTR
-typedef struct _CallbackList *CallbackListPtr; /* also in misc.h */
-#define _XTYPEDEF_CALLBACKLISTPTR
-#endif
-
-typedef void (*CallbackProcPtr) (
-    CallbackListPtr *, pointer, pointer);
-
-extern _X_EXPORT Bool AddCallback(
-    CallbackListPtr * /*pcbl*/,
-    CallbackProcPtr /*callback*/,
-    pointer /*data*/);
-
-extern _X_EXPORT Bool DeleteCallback(
-    CallbackListPtr * /*pcbl*/,
-    CallbackProcPtr /*callback*/,
-    pointer /*data*/);
-
-extern _X_EXPORT void CallCallbacks(
-    CallbackListPtr * /*pcbl*/,
-    pointer /*call_data*/);
-
-extern _X_EXPORT void DeleteCallbackList(
-    CallbackListPtr * /*pcbl*/);
-
-extern _X_EXPORT void InitCallbackManager(void);
 
 /*
  *  ServerGrabCallback stuff
@@ -581,8 +553,8 @@ typedef struct {
 extern _X_EXPORT CallbackListPtr DeviceEventCallback;
 
 typedef struct {
-    xEventPtr events;
-    int count;
+    InternalEvent *event;
+    DeviceIntPtr device;
 } DeviceEventInfoRec;
 
 extern int XItoCoreType(int xi_type);
@@ -590,7 +562,7 @@ extern Bool DevHasCursor(DeviceIntPtr pDev);
 extern Bool _X_EXPORT IsPointerDevice( DeviceIntPtr dev);
 extern Bool _X_EXPORT IsKeyboardDevice(DeviceIntPtr dev);
 extern Bool IsPointerEvent(InternalEvent *event);
-extern Bool IsMaster(DeviceIntPtr dev);
+extern _X_EXPORT Bool IsMaster(DeviceIntPtr dev);
 
 extern _X_HIDDEN void CopyKeyClass(DeviceIntPtr device, DeviceIntPtr master);
 extern _X_HIDDEN int CorePointerProc(DeviceIntPtr dev, int what);

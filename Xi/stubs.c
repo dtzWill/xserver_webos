@@ -207,14 +207,14 @@ ChangeDeviceControl(ClientPtr client, DeviceIntPtr dev,
 {
     switch (control->control) {
     case DEVICE_RESOLUTION:
-	return (BadMatch);
+	return BadMatch;
     case DEVICE_ABS_CALIB:
     case DEVICE_ABS_AREA:
-        return (BadMatch);
+        return BadMatch;
     case DEVICE_CORE:
-        return (BadMatch);
+        return BadMatch;
     default:
-	return (BadMatch);
+	return BadMatch;
     }
 }
 
@@ -227,7 +227,8 @@ ChangeDeviceControl(ClientPtr client, DeviceIntPtr dev,
  *
  */
 int
-NewInputDeviceRequest(InputOption *options, DeviceIntPtr *pdev)
+NewInputDeviceRequest(InputOption *options, InputAttributes *attrs,
+                      DeviceIntPtr *pdev)
 {
     return BadValue;
 }

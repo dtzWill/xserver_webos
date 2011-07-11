@@ -103,8 +103,8 @@ Bool		ctrlChange,stateChange;
 XkbStatePtr	state;
 
     if ((map->flags&XkbIM_NoExplicit)||((map->flags&XkbIM_LEDDrivesKB)==0))
-	return False;
-    ctrlChange= stateChange= False;
+	return FALSE;
+    ctrlChange= stateChange= FALSE;
     if (map->ctrls) {
 	XkbControlsPtr	ctrls= xkbi->desc->ctrls;
 	unsigned 	old;
@@ -115,7 +115,7 @@ XkbStatePtr	state;
 	if (old!=ctrls->enabled_ctrls) {
 	    change->ctrls.changed_ctrls= XkbControlsEnabledMask;
 	    change->ctrls.enabled_ctrls_changes= old^ctrls->enabled_ctrls;
-	    ctrlChange= True;
+	    ctrlChange= TRUE;
 	}
     }
     state= &xkbi->state;
@@ -133,7 +133,7 @@ XkbStatePtr	state;
 	    if (map->which_groups&XkbIM_UseLatched)
 		XkbLatchGroup(xkbi->device,0); /* unlatch group */
 	    state->locked_group= i;
-	    stateChange= True;
+	    stateChange= TRUE;
 	}
 	else if (map->which_groups&(XkbIM_UseLatched|XkbIM_UseEffective)) {
 	    for (i=0,bit=1;i<XkbNumKbdGroups;i++,bit<<=1) {
@@ -142,7 +142,7 @@ XkbStatePtr	state;
 	    }
 	    state->locked_group= 0;
 	    XkbLatchGroup(xkbi->device,i);
-	    stateChange= True;
+	    stateChange= TRUE;
 	}
     }
     if ((map->mods.mask)&&((map->which_mods&(~XkbIM_UseBase))!=0)) {
@@ -152,7 +152,7 @@ XkbStatePtr	state;
 	    if (on)	state->locked_mods|= map->mods.mask;
 	    else	state->locked_mods&= ~map->mods.mask;
 	    if (state->locked_mods!=old)
-		stateChange= True;
+		stateChange= TRUE;
 	}
 	if (map->which_mods&(XkbIM_UseLatched|XkbIM_UseEffective)) {
 	    register unsigned long newmods;
@@ -162,11 +162,11 @@ XkbStatePtr	state;
 	    if (newmods!=state->locked_mods) {
 		newmods&= map->mods.mask;
 		XkbLatchModifiers(xkbi->device,map->mods.mask,newmods);
-		stateChange= True;
+		stateChange= TRUE;
 	    }
 	}
     }
-    return (stateChange || ctrlChange);
+    return stateChange || ctrlChange;
 }
 	
 	/*
@@ -186,7 +186,7 @@ ComputeAutoState(	XkbIndicatorMapPtr	map,
 Bool 			on;
 CARD8 			mods,group;
 
-    on= False;
+    on= FALSE;
     mods= group= 0;
     if (map->which_mods&XkbIM_UseAnyMods) {
 	if (map->which_mods&XkbIM_UseBase)
@@ -263,7 +263,7 @@ unsigned			oldState;
 
     if (ed==NULL) {
 	ed= &my_ed;
-	bzero((char *)ed,sizeof(xkbExtensionDeviceNotify));
+	memset((char *)ed, 0, sizeof(xkbExtensionDeviceNotify));
     }
     else if ((ed->reason&XkbXI_IndicatorsMask)&&
 	     ((ed->ledClass!=sli->class)||(ed->ledID!=sli->id))) {
@@ -273,7 +273,7 @@ unsigned			oldState;
     if ((kbd==dev)&&(sli->flags&XkbSLI_IsDefault)) {
 	if (changes==NULL) {
 	    changes= &my_changes;
-	    bzero((char *)changes,sizeof(XkbChangesRec));
+	    memset((char *)changes, 0, sizeof(XkbChangesRec));
 	}
 	changes->indicators.state_changes|= affected;
     }
@@ -362,8 +362,8 @@ XkbChangesRec			changes;
 xkbExtensionDeviceNotify	ed;
 unsigned 			side_affected;
 
-    bzero((char *)&changes,sizeof(XkbChangesRec));
-    bzero((char *)&ed,sizeof(xkbExtensionDeviceNotify));
+    memset((char *)&changes, 0, sizeof(XkbChangesRec));
+    memset((char *)&ed, 0, sizeof(xkbExtensionDeviceNotify));
     sli= XkbFindSrvLedInfo(dev,XkbDfltXIClass,XkbDfltXIId,0);
     sli->explicitState&= ~affect;
     sli->explicitState|= (affect&values);
@@ -371,7 +371,7 @@ unsigned 			side_affected;
 
     side_affected= 0;
     if (changes.state_changes!=0)
-	side_affected|= XkbIndicatorsToUpdate(dev,changes.state_changes,False);
+	side_affected|= XkbIndicatorsToUpdate(dev,changes.state_changes,FALSE);
     if (changes.ctrls.enabled_ctrls_changes)
 	side_affected|= sli->usesControls;
 
@@ -402,7 +402,7 @@ unsigned 			side_affected;
 	 * required to report the necessary changes, otherwise it simply
 	 * notes the indicators with changed state.
 	 *
-	 * If 'check_edevs' is True, this function also checks the indicator
+	 * If 'check_edevs' is TRUE, this function also checks the indicator
 	 * maps for any open extension devices that have them, and updates
 	 * the state of any extension device indicators as necessary.
 	 */
@@ -522,9 +522,9 @@ Bool			checkAccel;
 Bool			checkNames;
 
     sli= NULL;
-    checkAccel= checkNames= False;
+    checkAccel= checkNames= FALSE;
     if ((kf!=NULL)&&(kf->xkb_sli==NULL)) {
-	kf->xkb_sli= sli= _XkbTypedCalloc(1,XkbSrvLedInfoRec);
+	kf->xkb_sli= sli= calloc(1, sizeof(XkbSrvLedInfoRec));
 	if (sli==NULL)
 	    return NULL; /* ALLOCATION ERROR */
 	if (dev->key && dev->key->xkbInfo)
@@ -545,7 +545,7 @@ Bool			checkNames;
 	    sli->physIndicators=	xkb->indicators->phys_indicators;
 	    sli->names=			xkb->names->indicators;
 	    sli->maps=			xkb->indicators->maps;
-	    checkNames= checkAccel=	True;
+	    checkNames= checkAccel=	TRUE;
 	}
 	else {
 	    sli->physIndicators=	XkbAllIndicatorsMask;
@@ -558,16 +558,16 @@ Bool			checkNames;
 	xkb= dev->key->xkbInfo->desc;
 	sli->physIndicators=	xkb->indicators->phys_indicators;
 	if (xkb->names->indicators!=sli->names) {
-	    checkNames= True;
+	    checkNames= TRUE;
 	    sli->names= xkb->names->indicators;
 	}
 	if (xkb->indicators->maps!=sli->maps) {
-	    checkAccel= True;
+	    checkAccel= TRUE;
 	    sli->maps= xkb->indicators->maps;
 	}
     }
     else if ((lf!=NULL)&&(lf->xkb_sli==NULL)) {
-	lf->xkb_sli= sli= _XkbTypedCalloc(1,XkbSrvLedInfoRec);
+	lf->xkb_sli= sli= calloc(1, sizeof(XkbSrvLedInfoRec));
 	if (sli==NULL)
 	    return NULL; /* ALLOCATION ERROR */
 	if (dev->key && dev->key->xkbInfo)
@@ -585,9 +585,9 @@ Bool			checkNames;
 	sli->names=		NULL;
     }
     if ((sli->names==NULL)&&(needed_parts&XkbXI_IndicatorNamesMask))
-	sli->names= _XkbTypedCalloc(XkbNumIndicators,Atom);
+	sli->names= calloc(XkbNumIndicators, sizeof(Atom));
     if ((sli->maps==NULL)&&(needed_parts&XkbXI_IndicatorMapsMask))
-	sli->maps= _XkbTypedCalloc(XkbNumIndicators,XkbIndicatorMapRec);
+	sli->maps= calloc(XkbNumIndicators, sizeof(XkbIndicatorMapRec));
     if (checkNames) {
 	register unsigned i,bit;
 	sli->namesPresent=	0;
@@ -605,12 +605,12 @@ void
 XkbFreeSrvLedInfo(XkbSrvLedInfoPtr sli)
 {
     if ((sli->flags&XkbSLI_IsDefault)==0) {
-	if (sli->maps)	xfree(sli->maps);
-	if (sli->names)	xfree(sli->names);
+	free(sli->maps);
+	free(sli->names);
     }
     sli->maps= NULL;
     sli->names= NULL;
-    xfree(sli);
+    free(sli);
     return;
 }
 
@@ -633,7 +633,7 @@ XkbCopySrvLedInfo(	DeviceIntPtr		from,
     if (!src)
 	goto finish;
 
-    sli_new = _XkbTypedCalloc(1, XkbSrvLedInfoRec);
+    sli_new = calloc(1, sizeof( XkbSrvLedInfoRec));
     if (!sli_new)
 	goto finish;
 
@@ -644,8 +644,8 @@ XkbCopySrvLedInfo(	DeviceIntPtr		from,
 	sli_new->fb.lf = lf;
 
     if (!(sli_new->flags & XkbSLI_IsDefault)) {
-	sli_new->names= _XkbTypedCalloc(XkbNumIndicators,Atom);
-	sli_new->maps= _XkbTypedCalloc(XkbNumIndicators,XkbIndicatorMapRec);
+	sli_new->names= calloc(XkbNumIndicators, sizeof(Atom));
+	sli_new->maps= calloc(XkbNumIndicators, sizeof(XkbIndicatorMapRec));
     } /* else sli_new->names/maps is pointing to
 	dev->key->xkbInfo->desc->names->indicators;
 	dev->key->xkbInfo->desc->names->indicators; */
@@ -715,9 +715,9 @@ XkbSrvLedInfoPtr	sli;
 	}
     }
     if ((sli->names==NULL)&&(needed_parts&XkbXI_IndicatorNamesMask))
-	sli->names= _XkbTypedCalloc(XkbNumIndicators,Atom);
+	sli->names= calloc(XkbNumIndicators, sizeof(Atom));
     if ((sli->maps==NULL)&&(needed_parts&XkbXI_IndicatorMapsMask))
-	sli->maps= _XkbTypedCalloc(XkbNumIndicators,XkbIndicatorMapRec);
+	sli->maps= calloc(XkbNumIndicators, sizeof(XkbIndicatorMapRec));
     return sli;
 }
 
@@ -735,7 +735,7 @@ XkbFlushLedEvents(	DeviceIntPtr			dev,
 	if (changes->indicators.state_changes)
 	    XkbDDXUpdateDeviceIndicators(dev,sli,sli->effectiveState);
 	XkbSendNotification(kbd,changes,cause);
-	bzero((char *)changes,sizeof(XkbChangesRec));
+	memset((char *)changes, 0, sizeof(XkbChangesRec));
 
 	if (XkbAX_NeedFeedback(kbd->key->xkbInfo->desc->ctrls, XkbAX_IndicatorFBMask)) {
 		if (sli->effectiveState)
@@ -745,12 +745,14 @@ XkbFlushLedEvents(	DeviceIntPtr			dev,
 			XkbDDXAccessXBeep(dev, _BEEP_LED_OFF, XkbAccessXFeedbackMask);
 	}
     }
-    if (ed && (ed->reason)) {
-	if ((dev!=kbd)&&(ed->reason&XkbXI_IndicatorStateMask))
-	    XkbDDXUpdateDeviceIndicators(dev,sli,sli->effectiveState);
-	XkbSendExtensionDeviceNotify(dev,cause->client,ed);
+    if (ed) {
+	if (ed->reason) {
+	    if ((dev!=kbd)&&(ed->reason&XkbXI_IndicatorStateMask))
+		XkbDDXUpdateDeviceIndicators(dev,sli,sli->effectiveState);
+	    XkbSendExtensionDeviceNotify(dev,cause->client,ed);
+	}
+	memset((char *)ed, 0, sizeof(XkbExtensionDeviceNotify));
     }
-    bzero((char *)ed,sizeof(XkbExtensionDeviceNotify));
     return;
 }
 
@@ -776,7 +778,7 @@ xkbExtensionDeviceNotify	my_ed;
 
     if (ed==NULL) {
 	ed= &my_ed;
-	bzero((char *)ed,sizeof(xkbExtensionDeviceNotify));
+	memset((char *)ed, 0, sizeof(xkbExtensionDeviceNotify));
     }
     else if ((ed->reason&XkbXI_IndicatorsMask)&&
 	     ((ed->ledClass!=sli->class)||(ed->ledID!=sli->id))) {
@@ -786,7 +788,7 @@ xkbExtensionDeviceNotify	my_ed;
     if ((kbd==dev)&&(sli->flags&XkbSLI_IsDefault)) { 
 	if (changes==NULL) {
 	   changes= &my_changes;
-	   bzero((char *)changes,sizeof(XkbChangesRec));
+	   memset((char *)changes, 0, sizeof(XkbChangesRec));
 	}
 	changes->names.changed|= XkbIndicatorNamesMask;
 	changes->names.changed_indicators|= changed_names;
@@ -853,7 +855,7 @@ xkbExtensionDeviceNotify	my_ed;
 
     if (ed==NULL) {
 	ed= &my_ed;
-	bzero((char *)ed,sizeof(xkbExtensionDeviceNotify));
+	memset((char *)ed, 0, sizeof(xkbExtensionDeviceNotify));
     }
     else if ((ed->reason&XkbXI_IndicatorsMask)&&
 	     ((ed->ledClass!=sli->class)||(ed->ledID!=sli->id))) {
@@ -863,7 +865,7 @@ xkbExtensionDeviceNotify	my_ed;
     if ((kbd==dev)&&(sli->flags&XkbSLI_IsDefault)) {
 	if (changes==NULL) {
 	    changes= &my_changes;
-	    bzero((char *)changes,sizeof(XkbChangesRec));
+	    memset((char *)changes, 0, sizeof(XkbChangesRec));
 	}
 	changes->indicators.map_changes|= changed_maps;
     }
@@ -915,10 +917,10 @@ Bool				kb_changed;
 
     if (changes==NULL) {
 	changes= &my_changes;
-	bzero((char *)changes,sizeof(XkbChangesRec));
+	memset((char *)changes, 0, sizeof(XkbChangesRec));
     }
 
-    kb_changed= False;
+    kb_changed= FALSE;
     affected= changed_leds;
     oldState= sli->effectiveState;
     for (i=0,bit=1;(i<XkbNumIndicators)&&(affected);i++,bit<<=1) {
@@ -933,7 +935,7 @@ Bool				kb_changed;
 	if (map->flags&XkbIM_LEDDrivesKB) {
 	    Bool on= ((sli->explicitState&bit)!=0);
 	    if (XkbApplyLEDChangeToKeyboard(xkbi,map,on,changes))
-		kb_changed= True;
+		kb_changed= TRUE;
 	}
     }
     sli->effectiveState= (sli->autoState|sli->explicitState);
@@ -941,7 +943,7 @@ Bool				kb_changed;
 
     if (ed==NULL) {
 	ed= &my_ed;
-	bzero((char *)ed,sizeof(xkbExtensionDeviceNotify));
+	memset((char *)ed, 0, sizeof(xkbExtensionDeviceNotify));
     }
     else if (affected&&(ed->reason&XkbXI_IndicatorsMask)&&
 	     ((ed->ledClass!=sli->class)||(ed->ledID!=sli->id))) {

@@ -169,7 +169,7 @@ exaOffscreenAlloc (ScreenPtr pScreen, int size, int align,
 {
     ExaOffscreenArea *area;
     ExaScreenPriv (pScreen);
-    int real_size = 0, free_total = 0, largest_avail = 0;
+    int real_size = 0, largest_avail = 0;
 #if DEBUG_OFFSCREEN
     static int number = 0;
     ErrorF("================= ============ allocating a new pixmap %d\n", ++number);
@@ -208,31 +208,8 @@ exaOffscreenAlloc (ScreenPtr pScreen, int size, int align,
 	if (real_size <= area->size)
 	    break;
 
-	free_total += area->size;
-
 	if (area->size > largest_avail)
 	    largest_avail = area->size;
-    }
-
-    if (!area && free_total >= size) {
-	CARD32 now = GetTimeInMillis();
-
-	/* Don't defragment more than once per second, to avoid adding more
-	 * overhead than we're trying to prevent
-	 */
-	if (abs((INT32) (now - pExaScr->lastDefragment)) > 1000) {
-	    area = ExaOffscreenDefragment(pScreen);
-	    pExaScr->lastDefragment = now;
-
-	    if (area) {
-		/* adjust size to match alignment requirement */
-		real_size = size + (area->base_offset + area->size - size) % align;
-
-		/* does it fit? */
-		if (real_size > area->size)
-		    area = NULL;
-	    }
-	}
     }
 
     if (!area)
@@ -268,7 +245,7 @@ exaOffscreenAlloc (ScreenPtr pScreen, int size, int align,
     /* save extra space in new area */
     if (real_size < area->size)
     {
-	ExaOffscreenArea   *new_area = xalloc (sizeof (ExaOffscreenArea));
+	ExaOffscreenArea   *new_area = malloc(sizeof (ExaOffscreenArea));
 	if (!new_area)
 	    return NULL;
 	new_area->base_offset = area->base_offset;
@@ -431,7 +408,7 @@ ExaOffscreenMerge (ExaScreenPrivPtr pExaScr, ExaOffscreenArea *area)
 	area->next->prev = area;
     else
 	pExaScr->info->offScreenAreas->prev = area;
-    xfree (next);
+    free(next);
 
     pExaScr->numOffscreenAvailable--;
 }
@@ -522,7 +499,7 @@ ExaOffscreenDefragment (ScreenPtr pScreen)
 	return NULL;
 
     pExaDstPix = ExaGetPixmapPriv (pDstPix);
-    pExaDstPix->offscreen = TRUE;
+    pExaDstPix->use_gpu_copy = TRUE;
 
     for (area = pExaScr->info->offScreenAreas->prev;
 	 area != pExaScr->info->offScreenAreas;
@@ -531,7 +508,7 @@ ExaOffscreenDefragment (ScreenPtr pScreen)
 	ExaOffscreenArea *prev = area->prev;
 	PixmapPtr pSrcPix;
 	ExaPixmapPrivPtr pExaSrcPix;
-	Bool save_offscreen;
+	Bool save_use_gpu_copy;
 	int save_pitch;
 
 	if (area->state != ExaOffscreenAvail ||
@@ -576,10 +553,10 @@ ExaOffscreenDefragment (ScreenPtr pScreen)
 	    continue;
 	}
 
-	save_offscreen = pExaSrcPix->offscreen;
+	save_use_gpu_copy = pExaSrcPix->use_gpu_copy;
 	save_pitch = pSrcPix->devKind;
 
-	pExaSrcPix->offscreen = TRUE;
+	pExaSrcPix->use_gpu_copy = TRUE;
 	pSrcPix->devKind = pExaSrcPix->fb_pitch;
 
 	pDstPix->drawable.width = pSrcPix->drawable.width;
@@ -589,7 +566,7 @@ ExaOffscreenDefragment (ScreenPtr pScreen)
 	pDstPix->drawable.bitsPerPixel = pSrcPix->drawable.bitsPerPixel;
 
 	if (!pExaScr->info->PrepareCopy (pSrcPix, pDstPix, -1, -1, GXcopy, ~0)) {
-	    pExaSrcPix->offscreen = save_offscreen;
+	    pExaSrcPix->use_gpu_copy = save_use_gpu_copy;
 	    pSrcPix->devKind = save_pitch;
 	    area = prev;
 	    continue;
@@ -646,7 +623,7 @@ ExaOffscreenDefragment (ScreenPtr pScreen)
 #endif
 
 	pExaSrcPix->fb_ptr = pExaDstPix->fb_ptr;
-	pExaSrcPix->offscreen = save_offscreen;
+	pExaSrcPix->use_gpu_copy = save_use_gpu_copy;
 	pSrcPix->devKind = save_pitch;
     }
 
@@ -678,7 +655,7 @@ exaOffscreenInit (ScreenPtr pScreen)
     ExaOffscreenArea *area;
 
     /* Allocate a big free area */
-    area = xalloc (sizeof (ExaOffscreenArea));
+    area = malloc(sizeof (ExaOffscreenArea));
 
     if (!area)
 	return FALSE;
@@ -714,6 +691,6 @@ ExaOffscreenFini (ScreenPtr pScreen)
     while ((area = pExaScr->info->offScreenAreas))
     {
 	pExaScr->info->offScreenAreas = area->next;
-	xfree (area);
+	free(area);
     }
 }

@@ -83,6 +83,7 @@ GetAccelerationProfile(DeviceVelocityPtr vel, int profile_num);
 /* some int which is not a profile number */
 #define PROFILE_UNINITIALIZE (-100)
 
+
 /**
  * Init struct so it should match the average case
  */
@@ -110,7 +111,7 @@ InitVelocityData(DeviceVelocityPtr vel)
  */
 void
 FreeVelocityData(DeviceVelocityPtr vel){
-    xfree(vel->tracker);
+    free(vel->tracker);
     SetAccelerationProfile(vel, PROFILE_UNINITIALIZE);
 }
 
@@ -126,8 +127,9 @@ AccelerationDefaultCleanup(DeviceIntPtr dev)
             && dev->valuator->accelScheme.accelData != NULL){
         dev->valuator->accelScheme.AccelSchemeProc = NULL;
         FreeVelocityData(dev->valuator->accelScheme.accelData);
-        xfree(dev->valuator->accelScheme.accelData);
+        free(dev->valuator->accelScheme.accelData);
         dev->valuator->accelScheme.accelData = NULL;
+        DeletePredictableAccelerationProperties(dev);
     }
 }
 
@@ -169,7 +171,7 @@ AccelSetProfileProperty(DeviceIntPtr dev, Atom atom,
     return Success;
 }
 
-static void
+static long
 AccelInitProfileProperty(DeviceIntPtr dev, DeviceVelocityPtr vel)
 {
     int profile = vel->statistics.profile_number;
@@ -178,7 +180,7 @@ AccelInitProfileProperty(DeviceIntPtr dev, DeviceVelocityPtr vel)
     XIChangeDeviceProperty(dev, prop_profile_number, XA_INTEGER, 32,
                            PropModeReplace, 1, &profile, FALSE);
     XISetDevicePropertyDeletable(dev, prop_profile_number, FALSE);
-    XIRegisterPropertyHandler(dev, AccelSetProfileProperty, NULL, NULL);
+    return XIRegisterPropertyHandler(dev, AccelSetProfileProperty, NULL, NULL);
 }
 
 /**
@@ -214,7 +216,7 @@ AccelSetDecelProperty(DeviceIntPtr dev, Atom atom,
     return Success;
 }
 
-static void
+static long
 AccelInitDecelProperty(DeviceIntPtr dev, DeviceVelocityPtr vel)
 {
     float fval = 1.0/vel->const_acceleration;
@@ -223,7 +225,7 @@ AccelInitDecelProperty(DeviceIntPtr dev, DeviceVelocityPtr vel)
                            XIGetKnownProperty(XATOM_FLOAT), 32,
                            PropModeReplace, 1, &fval, FALSE);
     XISetDevicePropertyDeletable(dev, prop_const_decel, FALSE);
-    XIRegisterPropertyHandler(dev, AccelSetDecelProperty, NULL, NULL);
+    return XIRegisterPropertyHandler(dev, AccelSetDecelProperty, NULL, NULL);
 }
 
 
@@ -260,7 +262,7 @@ AccelSetAdaptDecelProperty(DeviceIntPtr dev, Atom atom,
     return Success;
 }
 
-static void
+static long
 AccelInitAdaptDecelProperty(DeviceIntPtr dev, DeviceVelocityPtr vel)
 {
     float fval = 1.0/vel->min_acceleration;
@@ -269,7 +271,7 @@ AccelInitAdaptDecelProperty(DeviceIntPtr dev, DeviceVelocityPtr vel)
     XIChangeDeviceProperty(dev, prop_adapt_decel, XIGetKnownProperty(XATOM_FLOAT), 32,
                            PropModeReplace, 1, &fval, FALSE);
     XISetDevicePropertyDeletable(dev, prop_adapt_decel, FALSE);
-    XIRegisterPropertyHandler(dev, AccelSetAdaptDecelProperty, NULL, NULL);
+    return XIRegisterPropertyHandler(dev, AccelSetAdaptDecelProperty, NULL, NULL);
 }
 
 
@@ -307,7 +309,7 @@ AccelSetScaleProperty(DeviceIntPtr dev, Atom atom,
     return Success;
 }
 
-static void
+static long
 AccelInitScaleProperty(DeviceIntPtr dev, DeviceVelocityPtr vel)
 {
     float fval = vel->corr_mul;
@@ -316,7 +318,7 @@ AccelInitScaleProperty(DeviceIntPtr dev, DeviceVelocityPtr vel)
     XIChangeDeviceProperty(dev, prop_velo_scale, XIGetKnownProperty(XATOM_FLOAT), 32,
                            PropModeReplace, 1, &fval, FALSE);
     XISetDevicePropertyDeletable(dev, prop_velo_scale, FALSE);
-    XIRegisterPropertyHandler(dev, AccelSetScaleProperty, NULL, NULL);
+    return XIRegisterPropertyHandler(dev, AccelSetScaleProperty, NULL, NULL);
 }
 
 BOOL
@@ -327,10 +329,35 @@ InitializePredictableAccelerationProperties(DeviceIntPtr dev)
     if(!vel)
 	return FALSE;
 
-    AccelInitProfileProperty(dev, vel);
-    AccelInitDecelProperty(dev, vel);
-    AccelInitAdaptDecelProperty(dev, vel);
-    AccelInitScaleProperty(dev, vel);
+    vel->prop_handlers[0] = AccelInitProfileProperty(dev, vel);
+    vel->prop_handlers[1] = AccelInitDecelProperty(dev, vel);
+    vel->prop_handlers[2] = AccelInitAdaptDecelProperty(dev, vel);
+    vel->prop_handlers[3] = AccelInitScaleProperty(dev, vel);
+
+    return TRUE;
+}
+
+BOOL
+DeletePredictableAccelerationProperties(DeviceIntPtr dev)
+{
+    DeviceVelocityPtr  vel;
+    Atom prop;
+    int i;
+
+    prop = XIGetKnownProperty(ACCEL_PROP_VELOCITY_SCALING);
+    XIDeleteDeviceProperty(dev, prop, FALSE);
+    prop = XIGetKnownProperty(ACCEL_PROP_ADAPTIVE_DECELERATION);
+    XIDeleteDeviceProperty(dev, prop, FALSE);
+    prop = XIGetKnownProperty(ACCEL_PROP_CONSTANT_DECELERATION);
+    XIDeleteDeviceProperty(dev, prop, FALSE);
+    prop = XIGetKnownProperty(ACCEL_PROP_PROFILE_NUMBER);
+    XIDeleteDeviceProperty(dev, prop, FALSE);
+
+    vel = GetDevicePredictableAccelData(dev);
+    for (i = 0; vel && i < NPROPS_PREDICTABLE_ACCEL; i++)
+	if (vel->prop_handlers[i])
+	    XIUnregisterPropertyHandler(dev, vel->prop_handlers[i]);
+
     return TRUE;
 }
 
@@ -345,8 +372,8 @@ InitTrackers(DeviceVelocityPtr vel, int ntracker)
 	ErrorF("(dix ptracc) invalid number of trackers\n");
 	return;
     }
-    xfree(vel->tracker);
-    vel->tracker = (MotionTrackerPtr)xalloc(ntracker * sizeof(MotionTracker));
+    free(vel->tracker);
+    vel->tracker = (MotionTrackerPtr)malloc(ntracker * sizeof(MotionTracker));
     memset(vel->tracker, 0, ntracker * sizeof(MotionTracker));
     vel->num_tracker = ntracker;
 }
@@ -467,7 +494,7 @@ CalcTracker(DeviceVelocityPtr vel, int offset, int cur_t){
                       + vel->tracker[index].dy * vel->tracker[index].dy);
     int dtime = cur_t - vel->tracker[index].time;
     if(dtime > 0)
-	return (dist / dtime);
+	return dist / dtime;
     else
 	return 0;/* synonymous for NaN, since we're not C99 */
 }
@@ -828,6 +855,31 @@ SmoothLinearProfile(
 }
 
 
+/**
+ * From 0 to threshold, the response graduates smoothly from min_accel to
+ * acceleration. Beyond threshold it is exactly the specified acceleration.
+ */
+static float
+SmoothLimitedProfile(
+    DeviceIntPtr dev,
+    DeviceVelocityPtr vel,
+    float velocity,
+    float threshold,
+    float acc)
+{
+    float res;
+
+    if(velocity >= threshold || threshold == 0.0f)
+	return acc;
+
+    velocity /= threshold; /* should be [0..1[ now */
+
+    res = CalcPenumbralGradient(velocity) * (acc - vel->min_acceleration);
+
+    return vel->min_acceleration + res;
+}
+
+
 static float
 LinearProfile(
     DeviceIntPtr dev,
@@ -838,7 +890,6 @@ LinearProfile(
 {
     return acc * velocity;
 }
-
 
 static float
 NoProfile(
@@ -871,6 +922,8 @@ GetAccelerationProfile(
             return PowerProfile;
         case AccelProfileLinear:
             return LinearProfile;
+        case AccelProfileSmoothLimited:
+            return SmoothLimitedProfile;
         case AccelProfileNone:
             return NoProfile;
         default:
@@ -901,7 +954,7 @@ SetAccelerationProfile(
 
     if(vel->profile_private != NULL){
         /* Here one could free old profile-private data */
-        xfree(vel->profile_private);
+        free(vel->profile_private);
         vel->profile_private = NULL;
     }
     /* Here one could init profile-private data */

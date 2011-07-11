@@ -153,6 +153,7 @@ static void dix_event_to_core(int type)
     int rc;
     int state;
     int detail;
+    const int ROOT_WINDOW_ID = 0x100;
 
     /* EventToCore memsets the event to 0 */
 #define test_event() \
@@ -165,7 +166,7 @@ static void dix_event_to_core(int type)
     g_assert(core.u.keyButtonPointer.state == state); \
     g_assert(core.u.keyButtonPointer.eventX == 0); \
     g_assert(core.u.keyButtonPointer.eventY == 0); \
-    g_assert(core.u.keyButtonPointer.root == 0); \
+    g_assert(core.u.keyButtonPointer.root == ROOT_WINDOW_ID); \
     g_assert(core.u.keyButtonPointer.event == 0); \
     g_assert(core.u.keyButtonPointer.child == 0); \
     g_assert(core.u.keyButtonPointer.sameScreen == FALSE);
@@ -181,6 +182,9 @@ static void dix_event_to_core(int type)
     ev.time     = time;
     ev.root_y   = x;
     ev.root_x   = y;
+    SetBit(ev.valuators.mask, 0);
+    SetBit(ev.valuators.mask, 1);
+    ev.root     = ROOT_WINDOW_ID;
     ev.corestate = state;
     ev.detail.key = detail;
 
@@ -716,17 +720,204 @@ static void include_byte_padding_macros(void)
 
 }
 
+static void xi_unregister_handlers(void)
+{
+    DeviceIntRec dev;
+    int handler;
+
+    memset(&dev, 0, sizeof(dev));
+
+    handler = XIRegisterPropertyHandler(&dev, NULL, NULL, NULL);
+    g_assert(handler == 1);
+    handler = XIRegisterPropertyHandler(&dev, NULL, NULL, NULL);
+    g_assert(handler == 2);
+    handler = XIRegisterPropertyHandler(&dev, NULL, NULL, NULL);
+    g_assert(handler == 3);
+
+    g_test_message("Unlinking from front.");
+
+    XIUnregisterPropertyHandler(&dev, 4); /* NOOP */
+    g_assert(dev.properties.handlers->id == 3);
+    XIUnregisterPropertyHandler(&dev, 3);
+    g_assert(dev.properties.handlers->id == 2);
+    XIUnregisterPropertyHandler(&dev, 2);
+    g_assert(dev.properties.handlers->id == 1);
+    XIUnregisterPropertyHandler(&dev, 1);
+    g_assert(dev.properties.handlers == NULL);
+
+    handler = XIRegisterPropertyHandler(&dev, NULL, NULL, NULL);
+    g_assert(handler == 4);
+    handler = XIRegisterPropertyHandler(&dev, NULL, NULL, NULL);
+    g_assert(handler == 5);
+    handler = XIRegisterPropertyHandler(&dev, NULL, NULL, NULL);
+    g_assert(handler == 6);
+    XIUnregisterPropertyHandler(&dev, 3); /* NOOP */
+    g_assert(dev.properties.handlers->next->next->next == NULL);
+    XIUnregisterPropertyHandler(&dev, 4);
+    g_assert(dev.properties.handlers->next->next == NULL);
+    XIUnregisterPropertyHandler(&dev, 5);
+    g_assert(dev.properties.handlers->next == NULL);
+    XIUnregisterPropertyHandler(&dev, 6);
+    g_assert(dev.properties.handlers == NULL);
+
+    handler = XIRegisterPropertyHandler(&dev, NULL, NULL, NULL);
+    g_assert(handler == 7);
+    handler = XIRegisterPropertyHandler(&dev, NULL, NULL, NULL);
+    g_assert(handler == 8);
+    handler = XIRegisterPropertyHandler(&dev, NULL, NULL, NULL);
+    g_assert(handler == 9);
+
+    XIDeleteAllDeviceProperties(&dev);
+    g_assert(dev.properties.handlers == NULL);
+    XIUnregisterPropertyHandler(&dev, 7); /* NOOP */
+
+}
+
+static void cmp_attr_fields(InputAttributes *attr1,
+                            InputAttributes *attr2)
+{
+    char **tags1, **tags2;
+
+    g_assert(attr1 && attr2);
+    g_assert(attr1 != attr2);
+    g_assert(attr1->flags == attr2->flags);
+
+    if (attr1->product != NULL)
+    {
+        g_assert(attr1->product != attr2->product);
+        g_assert(strcmp(attr1->product, attr2->product) == 0);
+    } else
+        g_assert(attr2->product == NULL);
+
+    if (attr1->vendor != NULL)
+    {
+        g_assert(attr1->vendor != attr2->vendor);
+        g_assert(strcmp(attr1->vendor, attr2->vendor) == 0);
+    } else
+        g_assert(attr2->vendor == NULL);
+
+    if (attr1->device != NULL)
+    {
+        g_assert(attr1->device != attr2->device);
+        g_assert(strcmp(attr1->device, attr2->device) == 0);
+    } else
+        g_assert(attr2->device == NULL);
+
+    if (attr1->pnp_id != NULL)
+    {
+        g_assert(attr1->pnp_id != attr2->pnp_id);
+        g_assert(strcmp(attr1->pnp_id, attr2->pnp_id) == 0);
+    } else
+        g_assert(attr2->pnp_id == NULL);
+
+    if (attr1->usb_id != NULL)
+    {
+        g_assert(attr1->usb_id != attr2->usb_id);
+        g_assert(strcmp(attr1->usb_id, attr2->usb_id) == 0);
+    } else
+        g_assert(attr2->usb_id == NULL);
+
+    tags1 = attr1->tags;
+    tags2 = attr2->tags;
+
+    /* if we don't have any tags, skip the tag checking bits */
+    if (!tags1)
+    {
+        g_assert(!tags2);
+        return;
+    }
+
+    /* Don't lug around empty arrays */
+    g_assert(*tags1);
+    g_assert(*tags2);
+
+    /* check for identical content, but duplicated */
+    while (*tags1)
+    {
+        g_assert(*tags1 != *tags2);
+        g_assert(strcmp(*tags1, *tags2) == 0);
+        tags1++;
+        tags2++;
+    }
+
+    /* ensure tags1 and tags2 have the same no of elements */
+    g_assert(!*tags2);
+
+    /* check for not sharing memory */
+    tags1 = attr1->tags;
+    while (*tags1)
+    {
+        tags2 = attr2->tags;
+        while (*tags2)
+            g_assert(*tags1 != *tags2++);
+
+        tags1++;
+    }
+}
+
+static void dix_input_attributes(void)
+{
+    InputAttributes orig = {0};
+    InputAttributes *new;
+    char *tags[4] = {"tag1", "tag2", "tag2", NULL};
+
+    new = DuplicateInputAttributes(NULL);
+    g_assert(!new);
+
+    new = DuplicateInputAttributes(&orig);
+    g_assert(memcmp(&orig, new, sizeof(InputAttributes)) == 0);
+
+    orig.product = "product name";
+    new = DuplicateInputAttributes(&orig);
+    cmp_attr_fields(&orig, new);
+    FreeInputAttributes(new);
+
+    orig.vendor = "vendor name";
+    new = DuplicateInputAttributes(&orig);
+    cmp_attr_fields(&orig, new);
+    FreeInputAttributes(new);
+
+    orig.device = "device path";
+    new = DuplicateInputAttributes(&orig);
+    cmp_attr_fields(&orig, new);
+    FreeInputAttributes(new);
+
+    orig.pnp_id = "PnPID";
+    new = DuplicateInputAttributes(&orig);
+    cmp_attr_fields(&orig, new);
+    FreeInputAttributes(new);
+
+    orig.usb_id = "USBID";
+    new = DuplicateInputAttributes(&orig);
+    cmp_attr_fields(&orig, new);
+    FreeInputAttributes(new);
+
+    orig.flags = 0xF0;
+    new = DuplicateInputAttributes(&orig);
+    cmp_attr_fields(&orig, new);
+    FreeInputAttributes(new);
+
+    orig.tags = tags;
+    new = DuplicateInputAttributes(&orig);
+    cmp_attr_fields(&orig, new);
+    FreeInputAttributes(new);
+}
+
+
 int main(int argc, char** argv)
 {
     g_test_init(&argc, &argv,NULL);
     g_test_bug_base("https://bugzilla.freedesktop.org/show_bug.cgi?id=");
 
+    g_test_add_func("/dix/input/attributes", dix_input_attributes);
     g_test_add_func("/dix/input/init-valuators", dix_init_valuators);
     g_test_add_func("/dix/input/event-core-conversion", dix_event_to_core_conversion);
     g_test_add_func("/dix/input/check-grab-values", dix_check_grab_values);
     g_test_add_func("/dix/input/xi2-struct-sizes", xi2_struct_sizes);
     g_test_add_func("/dix/input/grab_matching", dix_grab_matching);
     g_test_add_func("/include/byte_padding_macros", include_byte_padding_macros);
+    g_test_add_func("/Xi/xiproperty/register-unregister", xi_unregister_handlers);
+
 
     return g_test_run();
 }

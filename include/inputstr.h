@@ -49,6 +49,7 @@ SOFTWARE.
 #ifndef INPUTSTRUCT_H
 #define INPUTSTRUCT_H
 
+#include <pixman.h>
 #include "input.h"
 #include "window.h"
 #include "dixstruct.h"
@@ -56,7 +57,7 @@ SOFTWARE.
 #include "geext.h"
 #include "privates.h"
 
-#define BitIsOn(ptr, bit) (((BYTE *) (ptr))[(bit)>>3] & (1 << ((bit) & 7)))
+#define BitIsOn(ptr, bit) (!!(((BYTE *) (ptr))[(bit)>>3] & (1 << ((bit) & 7))))
 #define SetBit(ptr, bit)  (((BYTE *) (ptr))[(bit)>>3] |= (1 << ((bit) & 7)))
 #define ClearBit(ptr, bit) (((BYTE *)(ptr))[(bit)>>3] &= ~(1 << ((bit) & 7)))
 
@@ -386,8 +387,16 @@ typedef struct {
     int spriteTraceSize;
     int spriteTraceGood;
 
-    ScreenPtr pEnqueueScreen; /* screen events are being delivered to */
-    ScreenPtr pDequeueScreen; /* screen events are being dispatched to */
+    /* Due to delays between event generation and event processing, it is
+     * possible that the pointer has crossed screen boundaries between the
+     * time in which it begins generating events and the time when
+     * those events are processed.
+     *
+     * pEnqueueScreen: screen the pointer was on when the event was generated
+     * pDequeueScreen: screen the pointer was on when the event is processed
+     */
+    ScreenPtr pEnqueueScreen;
+    ScreenPtr pDequeueScreen;
 
 } SpriteRec, *SpritePtr;
 
@@ -469,6 +478,14 @@ typedef struct _SpriteInfoRec {
     DeviceIntPtr        paired;      /* The paired device. Keyboard if
                                         spriteOwner is TRUE, otherwise the
                                         pointer that owns the sprite. */ 
+
+    /* keep states for animated cursor */
+    struct {
+        CursorPtr       pCursor;
+        ScreenPtr       pScreen;
+        int             elt;
+        CARD32          time;
+    } anim;
 } SpriteInfoRec, *SpriteInfoPtr;
 
 /* device types */
@@ -506,8 +523,9 @@ typedef struct _DeviceIntRec {
     LedFeedbackPtr	leds;
     struct _XkbInterest *xkb_interest;
     char                *config_info; /* used by the hotplug layer */
+    ClassesPtr		unused_classes; /* for master devices */
+    int			saved_master_id;	/* for slaves while grabbed */
     PrivateRec		*devPrivates;
-    int			nPrivates;
     DeviceUnwrapProc    unwrapProc;
     SpriteInfoPtr       spriteInfo;
     union {
@@ -533,6 +551,12 @@ typedef struct _DeviceIntRec {
         XIPropertyPtr   properties;
         XIPropertyHandlerPtr handlers; /* NULL-terminated */
     } properties;
+
+    /* coordinate transformation matrix for absolute input devices */
+    struct pixman_f_transform transform;
+
+    /* XTest related master device id */
+    int xtest_master_id;
 } DeviceIntRec;
 
 typedef struct {
@@ -556,5 +580,35 @@ typedef struct _QdEvent {
     unsigned long	months;		/* milliseconds is in the event */
     InternalEvent	*event;
 } QdEventRec;
+
+/**
+ * syncEvents is the global structure for queued events.
+ *
+ * Devices can be frozen through GrabModeSync pointer grabs. If this is the
+ * case, events from these devices are added to "pending" instead of being
+ * processed normally. When the device is unfrozen, events in "pending" are
+ * replayed and processed as if they would come from the device directly.
+ */
+typedef struct _EventSyncInfo {
+    QdEventPtr          pending, /**<  list of queued events */
+                        *pendtail; /**< last event in list */
+    /** The device to replay events for. Only set in AllowEvents(), in which
+     * case it is set to the device specified in the request. */
+    DeviceIntPtr        replayDev;      /* kludgy rock to put flag for */
+
+    /**
+     * The window the events are supposed to be replayed on.
+     * This window may be set to the grab's window (but only when
+     * Replay{Pointer|Keyboard} is given in the XAllowEvents()
+     * request. */
+    WindowPtr           replayWin;      /*   ComputeFreezes            */
+    /**
+     * Flag to indicate whether we're in the process of
+     * replaying events. Only set in ComputeFreezes(). */
+    Bool                playingEvents;
+    TimeStamp           time;
+} EventSyncInfoRec, *EventSyncInfoPtr;
+
+extern EventSyncInfoRec syncEvents;
 
 #endif /* INPUTSTRUCT_H */

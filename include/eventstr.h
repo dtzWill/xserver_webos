@@ -58,17 +58,13 @@ enum EventType {
     ET_ProximityOut,
     ET_DeviceChanged,
     ET_Hierarchy,
-#if XFreeXDGA
     ET_DGAEvent,
-#endif
     ET_RawKeyPress,
     ET_RawKeyRelease,
     ET_RawButtonPress,
     ET_RawButtonRelease,
     ET_RawMotion,
-#ifdef XQUARTZ
     ET_XQuartz,
-#endif
     ET_Internal = 0xFF /* First byte */
 };
 
@@ -95,15 +91,15 @@ struct _DeviceEvent
         uint32_t button;  /**< Button number */
         uint32_t key;     /**< Key code */
     } detail;
-    uint16_t root_x;      /**< Pos relative to root window in integral data */
+    int16_t root_x;       /**< Pos relative to root window in integral data */
     float root_x_frac;    /**< Pos relative to root window in frac part */
-    uint16_t root_y;      /**< Pos relative to root window in integral part */
+    int16_t root_y;       /**< Pos relative to root window in integral part */
     float root_y_frac;    /**< Pos relative to root window in frac part */
     uint8_t    buttons[(MAX_BUTTONS + 7)/8]; /**< Button mask */
     struct {
         uint8_t  mask[(MAX_VALUATORS + 7)/8]; /**< Valuator mask */
         uint8_t  mode[(MAX_VALUATORS + 7)/8]; /**< Valuator mode (Abs or Rel)*/
-        uint32_t data[MAX_VALUATORS];         /**< Valuator data */
+        int32_t  data[MAX_VALUATORS];         /**< Valuator data */
         int32_t  data_frac[MAX_VALUATORS];    /**< Fractional part for data */
     } valuators;
     struct {

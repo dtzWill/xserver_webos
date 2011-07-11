@@ -71,8 +71,8 @@ exaCreatePixmap_driver(ScreenPtr pScreen, int w, int h, int depth,
 
     bpp = pPixmap->drawable.bitsPerPixel;
 
-    /* Set this before driver hooks, to allow for !offscreen pixmaps.
-     * !offscreen pixmaps have a valid pointer at all times.
+    /* Set this before driver hooks, to allow for driver pixmaps without gpu
+     * memory to back it. These pixmaps have a valid pointer at all times.
      */
     pPixmap->devPrivate.ptr = NULL;
 
@@ -115,6 +115,10 @@ exaCreatePixmap_driver(ScreenPtr pScreen, int w, int h, int depth,
     exaSetAccelBlock(pExaScr, pExaPixmap,
                      w, h, bpp);
 
+    /* During a fallback we must prepare access. */
+    if (pExaScr->fallback_counter)
+	exaPrepareAccess(&pPixmap->drawable, EXA_PREPARE_AUX_DEST);
+
     return pPixmap;
 }
 
@@ -122,7 +126,7 @@ Bool
 exaModifyPixmapHeader_driver(PixmapPtr pPixmap, int width, int height, int depth,
 		      int bitsPerPixel, int devKind, pointer pPixData)
 {
-    ScreenPtr pScreen = pPixmap->drawable.pScreen;
+    ScreenPtr pScreen;
     ExaScreenPrivPtr pExaScr;
     ExaPixmapPrivPtr pExaPixmap;
     Bool ret;
@@ -130,6 +134,7 @@ exaModifyPixmapHeader_driver(PixmapPtr pPixmap, int width, int height, int depth
     if (!pPixmap)
         return FALSE;
 
+    pScreen = pPixmap->drawable.pScreen;
     pExaScr = ExaGetScreenPriv(pScreen);
     pExaPixmap = ExaGetPixmapPriv(pPixmap);
 
@@ -153,8 +158,9 @@ exaModifyPixmapHeader_driver(PixmapPtr pPixmap, int width, int height, int depth
 	ret = pExaScr->info->ModifyPixmapHeader(pPixmap, width, height, depth,
 						bitsPerPixel, devKind, pPixData);
 	/* For EXA_HANDLES_PIXMAPS, we set pPixData to NULL.
-	 * If pPixmap->devPrivate.ptr is non-NULL, then we've got a non-offscreen pixmap.
-	 * We need to store the pointer, because PrepareAccess won't be called.
+	 * If pPixmap->devPrivate.ptr is non-NULL, then we've got a
+	 * !has_gpu_copy pixmap. We need to store the pointer,
+	 * because PrepareAccess won't be called.
 	 */
 	if (!pPixData && pPixmap->devPrivate.ptr && pPixmap->devKind) {
 	    pExaPixmap->sys_ptr = pPixmap->devPrivate.ptr;
@@ -187,6 +193,8 @@ exaDestroyPixmap_driver (PixmapPtr pPixmap)
     {
 	ExaPixmapPriv (pPixmap);
 
+	exaDestroyPixmap(pPixmap);
+
 	if (pExaPixmap->driverPriv)
 	    pExaScr->info->DestroyPixmap(pScreen, pExaPixmap->driverPriv);
 	pExaPixmap->driverPriv = NULL;
@@ -200,15 +208,17 @@ exaDestroyPixmap_driver (PixmapPtr pPixmap)
 }
 
 Bool
-exaPixmapIsOffscreen_driver(PixmapPtr pPixmap)
+exaPixmapHasGpuCopy_driver(PixmapPtr pPixmap)
 {
     ScreenPtr pScreen = pPixmap->drawable.pScreen;
     ExaScreenPriv(pScreen);
+    pointer saved_ptr;
     Bool ret;
 
+    saved_ptr = pPixmap->devPrivate.ptr;
     pPixmap->devPrivate.ptr = ExaGetPixmapAddress(pPixmap);
     ret = pExaScr->info->PixmapIsOffscreen(pPixmap);
-    pPixmap->devPrivate.ptr = NULL;
+    pPixmap->devPrivate.ptr = saved_ptr;
 
     return ret;
 }

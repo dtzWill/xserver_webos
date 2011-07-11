@@ -194,47 +194,40 @@ xf86ProcessActionEvent(ActionEvent action, void *arg)
 	if (!xf86Info.dontZoom)
 	    xf86ZoomViewport(xf86Info.currentScreen, -1);
 	break;
-#if defined(VT_ACTIVATE)
     case ACTION_SWITCHSCREEN:
 	if (VTSwitchEnabled && !xf86Info.dontVTSwitch && arg) {
 	    int vtno = *((int *) arg);
-#if defined(__SCO__) || defined(__UNIXWARE__)
-	    vtno--;
-#endif
-#if defined(sun)
-	    if (vtno == xf86Info.vtno)
-		break;
 
-	    xf86Info.vtRequestsPending = TRUE;
-	    xf86Info.vtPendingNum = vtno;
-#else
-	    if (ioctl(xf86Info.consoleFd, VT_ACTIVATE, vtno) < 0)
-		ErrorF("Failed to switch consoles (%s)\n", strerror(errno));
-#endif
+	    if (vtno != xf86Info.vtno) {
+		if (!xf86VTActivate(vtno)) {
+		    ErrorF("Failed to switch from vt%02d to vt%02d: %s\n",
+			   xf86Info.vtno, vtno, strerror(errno));
+		}
+	    }
 	}
 	break;
     case ACTION_SWITCHSCREEN_NEXT:
 	if (VTSwitchEnabled && !xf86Info.dontVTSwitch) {
-#if defined(__SCO__) || defined(__UNIXWARE__)
-	    if (ioctl(xf86Info.consoleFd, VT_ACTIVATE, xf86Info.vtno) < 0)
-#else
-	    if (ioctl(xf86Info.consoleFd, VT_ACTIVATE, xf86Info.vtno + 1) < 0)
-#endif
-#if defined (__SCO__) || (defined(sun) && defined (__i386__) && defined (SVR4)) || defined(__UNIXWARE__)
-		if (ioctl(xf86Info.consoleFd, VT_ACTIVATE, 0) < 0)
-#else
-		if (ioctl(xf86Info.consoleFd, VT_ACTIVATE, 1) < 0)
-#endif
-		    ErrorF("Failed to switch consoles (%s)\n", strerror(errno));
+	    if (!xf86VTActivate(xf86Info.vtno + 1)) {
+		/* If first try failed, assume this is the last VT and
+		 * try wrapping around to the first vt.
+		 */
+		if (!xf86VTActivate(1)) {
+		    ErrorF("Failed to switch from vt%02d to next vt: %s\n",
+			   xf86Info.vtno, strerror(errno));
+		}
+	    }
 	}
 	break;
     case ACTION_SWITCHSCREEN_PREV:
 	if (VTSwitchEnabled && !xf86Info.dontVTSwitch && xf86Info.vtno > 0) {
-	    if (ioctl(xf86Info.consoleFd, VT_ACTIVATE, xf86Info.vtno - 1) < 0)
-		ErrorF("Failed to switch consoles (%s)\n", strerror(errno));
+	    if (!xf86VTActivate(xf86Info.vtno - 1)) {
+		/* Don't know what the maximum VT is, so can't wrap around */
+		ErrorF("Failed to switch from vt%02d to previous vt: %s\n",
+		       xf86Info.vtno, strerror(errno));
+	    }
 	}
 	break;
-#endif
     default:
 	break;
     }
@@ -263,13 +256,14 @@ xf86Wakeup(pointer blockData, int err, pointer pReadmask)
 		    (FD_ISSET(pInfo->fd, &devicesWithInput) != 0)) {
 		    int sigstate = xf86BlockSIGIO();
 
-		    pInfo->read_input(pInfo);
-		    xf86UnblockSIGIO(sigstate);
 		    /*
 		     * Remove the descriptior from the set because more than one
 		     * device may share the same file descriptor.
 		     */
 		    FD_CLR(pInfo->fd, &devicesWithInput);
+
+		    pInfo->read_input(pInfo);
+		    xf86UnblockSIGIO(sigstate);
 		}
 		pInfo = pInfo->next;
 	    }
@@ -378,8 +372,6 @@ xf86PrintBacktrace(void)
     xorg_backtrace();
 }
 
-#define KeyPressed(k) (keyc->postdown[k >> 3] & (1 << (k & 7)))
-
 static void
 xf86ReleaseKeys(DeviceIntPtr pDev)
 {
@@ -405,7 +397,7 @@ xf86ReleaseKeys(DeviceIntPtr pDev)
     for (i = keyc->xkbInfo->desc->min_key_code;
          i < keyc->xkbInfo->desc->max_key_code;
          i++) {
-        if (KeyPressed(i)) {
+        if (key_is_down(pDev, i, KEY_POSTED)) {
             sigstate = xf86BlockSIGIO ();
             nevents = GetKeyboardEvents(xf86Events, pDev, KeyRelease, i);
             for (j = 0; j < nevents; j++)
@@ -573,7 +565,7 @@ addInputHandler(int fd, InputHandlerProc proc, pointer data)
     if (fd < 0 || !proc)
 	return NULL;
 
-    ih = xcalloc(sizeof(*ih), 1);
+    ih = calloc(sizeof(*ih), 1);
     if (!ih)
 	return NULL;
 
@@ -622,7 +614,7 @@ removeInputHandler(IHPtr ih)
 	if (ih)
 	    p->next = ih->next;
     }
-    xfree(ih);
+    free(ih);
 }
 
 int

@@ -47,14 +47,10 @@
 
 /* Globals that video drivers may access */
 
-/* Index into pScreen.devPrivates */
-static int xf86CreateRootWindowKeyIndex;
-DevPrivateKey xf86CreateRootWindowKey = &xf86CreateRootWindowKeyIndex;
-/* Index of ScrnInfo in pScreen.devPrivates */
-static int xf86ScreenKeyIndex;
-DevPrivateKey xf86ScreenKey = &xf86ScreenKeyIndex;
-static int xf86PixmapKeyIndex;
-DevPrivateKey xf86PixmapKey = &xf86PixmapKeyIndex;
+DevPrivateKeyRec xf86CreateRootWindowKeyRec;
+DevPrivateKeyRec xf86ScreenKeyRec;
+DevPrivateKeyRec xf86PixmapKeyRec;
+
 ScrnInfoPtr *xf86Screens = NULL;	/* List of ScrnInfos */
 const unsigned char byte_reversed[256] =
 {
@@ -124,7 +120,7 @@ xf86InfoRec xf86Info = {
     .miscModInDevAllowNonLocal  = FALSE,
     .pixmap24                   = Pix24DontCare,
     .pix24From                  = X_DEFAULT,
-#ifdef __i386__
+#ifdef SUPPORT_PC98
     .pc98                       = FALSE,
 #endif
     .pmFlag                     = TRUE,
@@ -132,7 +128,7 @@ xf86InfoRec xf86Info = {
     .kbdCustomKeycodes          = FALSE,
     .disableRandR               = FALSE,
     .randRFrom                  = X_DEFAULT,
-#ifdef CONFIG_HAL
+#if defined(CONFIG_HAL) || defined(CONFIG_UDEV)
     .allowEmptyInput            = TRUE,
     .autoAddDevices             = TRUE,
     .autoEnableDevices          = TRUE
@@ -143,6 +139,7 @@ xf86InfoRec xf86Info = {
 #endif
 };
 const char *xf86ConfigFile = NULL;
+const char *xf86ConfigDir = NULL;
 const char *xf86ModulePath = DEFAULT_MODULE_PATH;
 MessageType xf86ModPathFrom = X_DEFAULT;
 const char *xf86LogFile = DEFAULT_LOGPREFIX;

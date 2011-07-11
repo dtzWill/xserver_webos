@@ -370,7 +370,7 @@ void dmxCommonOthGetInfo(DevicePtr pDev, DMXLocalInitInfoPtr info)
     Display              *display = priv->display;
     int                  num;
     int                  i, j, k;
-    int                  (*handler)(Display *, char *, char *);
+    XextErrorHandler     handler;
 
     if (!display && !(display = XOpenDisplay(dmxInput->name)))
         return;
@@ -519,17 +519,16 @@ void dmxCommonMouOff(DevicePtr pDev)
 /** Given the global coordinates \a x and \a y, determine the screen
  * with the lowest number on which those coordinates lie.  If they are
  * not on any screen, return -1.  The number returned is an index into
- * #dmxScreenInfo and is between -1 and #dmxNumScreens - 1,
+ * \a dmxScreenInfo and is between -1 and \a dmxNumScreens - 1,
  * inclusive. */
 int dmxFindPointerScreen(int x, int y)
 {
     int i;
 
     for (i = 0; i < dmxNumScreens; i++) {
-	if (x >= dixScreenOrigins[i].x
-            && x < dixScreenOrigins[i].x + screenInfo.screens[i]->width
-            && y >= dixScreenOrigins[i].y
-            && y < dixScreenOrigins[i].y + screenInfo.screens[i]->height)
+	ScreenPtr pScreen = screenInfo.screens[i];
+	if (x >= pScreen->x && x < pScreen->x + pScreen->width &&
+	    y >= pScreen->y && y < pScreen->y + pScreen->height)
 	    return i;
     }
     return -1;

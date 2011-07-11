@@ -20,11 +20,11 @@ Xfake_LDADD = 						\
 	libfake.la					\
 	@KDRIVE_LIBS@
 
-Xfake_LDFLAGS = $(LD_EXPORT_SYMBOLS_FLAG) -Wl,-undefined=InitExtensions
+Xfake_LDFLAGS = $(LD_EXPORT_SYMBOLS_FLAG)
 
 Xfake_DEPENDENCIES =	\
 	libfake.la					\
 	@KDRIVE_LOCAL_LIBS@
 
 relink:
-	rm -f $(bin_PROGRAMS) && make $(bin_PROGRAMS)
+	$(AM_V_at)rm -f $(bin_PROGRAMS) && $(MAKE) $(bin_PROGRAMS)

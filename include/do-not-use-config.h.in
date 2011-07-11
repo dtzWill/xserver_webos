@@ -36,6 +36,9 @@
 /* Use D-Bus for input hotplug */
 #undef CONFIG_NEED_DBUS
 
+/* Use libudev for input hotplug */
+#undef CONFIG_UDEV
+
 /* Define to one of `_getb67', `GETB67', `getb67' for Cray-2 and Cray-YMP
    systems. This function is required for `alloca.c' support on those systems.
    */
@@ -73,6 +76,9 @@
 
 /* Default library install path */
 #undef DEFAULT_LIBRARY_PATH
+
+/* Default log location */
+#undef DEFAULT_LOGDIR
 
 /* Default log location */
 #undef DEFAULT_LOGPREFIX
@@ -153,9 +159,6 @@
 /* Define to 1 if you have the `authdes_seccreate' function. */
 #undef HAVE_AUTHDES_SECCREATE
 
-/* "Have avc_netlink_acquire_fd" */
-#undef HAVE_AVC_NETLINK_ACQUIRE_FD
-
 /* Has backtrace support */
 #undef HAVE_BACKTRACE
 
@@ -193,6 +196,9 @@
 /* Define to 1 if you have the `ffs' function. */
 #undef HAVE_FFS
 
+/* Define to 1 if you have the <fnmatch.h> header file. */
+#undef HAVE_FNMATCH_H
+
 /* Define to 1 if you have the `geteuid' function. */
 #undef HAVE_GETEUID
 
@@ -222,9 +228,6 @@
 
 /* Define to 1 if you have the `m' library (-lm). */
 #undef HAVE_LIBM
-
-/* Define to 1 if you have the `selinux' library (-lselinux). */
-#undef HAVE_LIBSELINUX
 
 /* Define to 1 if you have the `ws2_32' library (-lws2_32). */
 #undef HAVE_LIBWS2_32
@@ -280,14 +283,20 @@
 /* Define to 1 if you have the <SDL/SDL.h> header file. */
 #undef HAVE_SDL_SDL_H
 
-/* Define to 1 if you have the <selinux/avc.h> header file. */
-#undef HAVE_SELINUX_AVC_H
+/* Use CommonCrypto SHA1 functions */
+#undef HAVE_SHA1_IN_COMMONCRYPTO
 
-/* Define to 1 if you have the <selinux/selinux.h> header file. */
-#undef HAVE_SELINUX_SELINUX_H
+/* Use libc SHA1 functions */
+#undef HAVE_SHA1_IN_LIBC
 
-/* Use libmd SHA1 functions instead of OpenSSL libcrypto */
+/* Use libgcrypt SHA1 functions */
+#undef HAVE_SHA1_IN_LIBGCRYPT
+
+/* Use libmd SHA1 functions */
 #undef HAVE_SHA1_IN_LIBMD
+
+/* Use libsha1 for SHA1 */
+#undef HAVE_SHA1_IN_LIBSHA1
 
 /* Define to 1 if you have the `shmctl64' function. */
 #undef HAVE_SHMCTL64
@@ -357,6 +366,9 @@
 /* Define to 1 if you have the <sys/types.h> header file. */
 #undef HAVE_SYS_TYPES_H
 
+/* Define to 1 if you have the <sys/utsname.h> header file. */
+#undef HAVE_SYS_UTSNAME_H
+
 /* Define to 1 if you have the <sys/vm86.h> header file. */
 #undef HAVE_SYS_VM86_H
 
@@ -387,8 +399,14 @@
 /* Build Kdrive X server */
 #undef KDRIVESERVER
 
-/* Build VESA-based kdrive servers */
-#undef KDRIVEVESA
+/* Enable KDrive evdev driver */
+#undef KDRIVE_EVDEV
+
+/* Enable KDrive kbd driver */
+#undef KDRIVE_KBD
+
+/* Enable KDrive mouse driver */
+#undef KDRIVE_MOUSE
 
 /* Prefix to use for launchd identifiers */
 #undef LAUNCHD_ID_PREFIX
@@ -405,9 +423,6 @@
 
 /* Have monotonic clock from clock_gettime() */
 #undef MONOTONIC_CLOCK
-
-/* Build Multibuffer extension */
-#undef MULTIBUFFER
 
 /* Do not have 'strcasecmp'. */
 #undef NEED_STRCASECMP
@@ -426,9 +441,6 @@
 
 /* Define to 1 if modules should avoid the libcwrapper */
 #undef NO_LIBCWRAPPER
-
-/* Use an empty root cursor */
-#undef NULL_ROOT_CURSOR
 
 /* Operating System Name */
 #undef OSNAME
@@ -450,6 +462,9 @@
 
 /* Define to the one symbol short name of this package. */
 #undef PACKAGE_TARNAME
+
+/* Define to the home page for this package. */
+#undef PACKAGE_URL
 
 /* Define to the version of this package. */
 #undef PACKAGE_VERSION
@@ -525,8 +540,14 @@
 /* Define to 1 if you have the ANSI C header files. */
 #undef STDC_HEADERS
 
+/* Support PC98 */
+#undef SUPPORT_PC98
+
 /* Define to 1 on systems derived from System V Release 4 */
 #undef SVR4
+
+/* Location of system.XWinrc */
+#undef SYSCONFDIR
 
 /* System has syscons console */
 #undef SYSCONS_SUPPORT
@@ -575,6 +596,9 @@
 
 /* Version number of package */
 #undef VERSION
+
+/* Building with libdrm support */
+#undef WITH_LIBDRM
 
 /* Building vgahw module */
 #undef WITH_VGAHW
@@ -635,6 +659,9 @@
 
 /* Support Xinerama extension */
 #undef XINERAMA
+
+/* Support X Input extension */
+#undef XINPUT
 
 /* Path to XKB data */
 #undef XKB_BASE_DIRECTORY
@@ -739,6 +766,9 @@
 /* Vendor web address for support */
 #undef __VENDORDWEBSUPPORT__
 
+/* Name of configuration directory */
+#undef __XCONFIGDIR__
+
 /* Name of configuration file */
 #undef __XCONFIGFILE__
 
@@ -759,3 +789,6 @@
 
 /* Define to `int' if <sys/types.h> does not define. */
 #undef pid_t
+
+/* Define to `unsigned int' if <sys/types.h> does not define. */
+#undef size_t

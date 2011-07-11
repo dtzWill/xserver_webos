@@ -38,11 +38,11 @@ from The Open Group.
 #include <X11/Xos.h>
 #include "mibstore.h"
 #include "mipointer.h"
-#include "lk201kbd.h"
 #include "xkbsrv.h"
 #include <X11/keysym.h>
 #include "xserver-properties.h"
 #include "exevents.h"
+#include "extinit.h"
 
 Bool
 LegalModifier(unsigned int key, DeviceIntPtr pDev)
@@ -62,7 +62,6 @@ void DDXRingBell(int volume, int pitch, int duration)
 
 #define VFB_MIN_KEY 8
 #define VFB_MAX_KEY 255
-KeySym  map[MAP_LENGTH * LK201_GLYPHS_PER_KEY];
 
 static int
 vfbKeybdProc(DeviceIntPtr pDevice, int onoff)
@@ -136,9 +135,19 @@ void
 InitInput(int argc, char *argv[])
 {
     DeviceIntPtr p, k;
+    Atom xiclass;
     p = AddInputDevice(serverClient, vfbMouseProc, TRUE);
     k = AddInputDevice(serverClient, vfbKeybdProc, TRUE);
     RegisterPointerDevice(p);
+    xiclass = MakeAtom(XI_MOUSE, sizeof(XI_MOUSE) - 1, TRUE);
+    AssignTypeAndName(p, xiclass, "Xvfb mouse");
     RegisterKeyboardDevice(k);
+    xiclass = MakeAtom(XI_KEYBOARD, sizeof(XI_KEYBOARD) - 1, TRUE);
+    AssignTypeAndName(k, xiclass, "Xvfb keyboard");
     (void)mieqInit();
+}
+
+void
+CloseInput (void)
+{
 }

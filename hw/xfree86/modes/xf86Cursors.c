@@ -1,5 +1,6 @@
 /*
  * Copyright © 2007 Keith Packard
+ * Copyright © 2010 Aaron Plattner
  *
  * Permission to use, copy, modify, distribute, and sell this software and its
  * documentation for any purpose is hereby granted without fee, provided that
@@ -41,9 +42,7 @@
 #include "X11/extensions/render.h"
 #include "X11/extensions/dpmsconst.h"
 #include "X11/Xatom.h"
-#ifdef RENDER
 #include "picturestr.h"
-#endif
 #include "cursorstr.h"
 #include "inputstr.h"
 
@@ -128,12 +127,33 @@ xf86_crtc_rotate_coord_back (Rotation    rotation,
     *y_src = y_dst;
 }
 
+struct cursor_bit {
+    CARD8 *byte;
+    char bitpos;
+};
+
 /*
  * Convert an x coordinate to a position within the cursor bitmap
  */
-static int
-cursor_bitpos (int flags, int x, Bool mask)
+static struct cursor_bit
+cursor_bitpos (CARD8 *image, xf86CursorInfoPtr cursor_info, int x, int y,
+	       Bool mask)
 {
+    const int flags = cursor_info->Flags;
+    const Bool interleaved =
+	!!(flags & (HARDWARE_CURSOR_SOURCE_MASK_INTERLEAVE_1 |
+		    HARDWARE_CURSOR_SOURCE_MASK_INTERLEAVE_8 |
+		    HARDWARE_CURSOR_SOURCE_MASK_INTERLEAVE_16 |
+		    HARDWARE_CURSOR_SOURCE_MASK_INTERLEAVE_32 |
+		    HARDWARE_CURSOR_SOURCE_MASK_INTERLEAVE_64));
+    const int width = cursor_info->MaxWidth;
+    const int height = cursor_info->MaxHeight;
+    const int stride = interleaved ? width / 4 : width / 8;
+
+    struct cursor_bit ret;
+
+    image += y * stride;
+
     if (flags & HARDWARE_CURSOR_SWAP_SOURCE_AND_MASK)
 	mask = !mask;
     if (flags & HARDWARE_CURSOR_NIBBLE_SWAPPED)
@@ -151,29 +171,33 @@ cursor_bitpos (int flags, int x, Bool mask)
 	x = ((x & ~31) << 1) | (mask << 5) | (x & 31);
     else if (flags & HARDWARE_CURSOR_SOURCE_MASK_INTERLEAVE_64)
 	x = ((x & ~63) << 1) | (mask << 6) | (x & 63);
-    return x;
+    else if (mask)
+	image += stride * height;
+
+    ret.byte = image + (x / 8);
+    ret.bitpos = x & 7;
+
+    return ret;
 }
 
 /*
  * Fetch one bit from a cursor bitmap
  */
 static CARD8
-get_bit (CARD8 *image, int stride, int flags, int x, int y, Bool mask)
+get_bit (CARD8 *image, xf86CursorInfoPtr cursor_info, int x, int y, Bool mask)
 {
-    x = cursor_bitpos (flags, x, mask);
-    image += y * stride;
-    return (image[(x >> 3)] >> (x & 7)) & 1;
+    struct cursor_bit bit = cursor_bitpos(image, cursor_info, x, y, mask);
+    return (*bit.byte >> bit.bitpos) & 1;
 }
 
 /*
  * Set one bit in a cursor bitmap
  */
 static void
-set_bit (CARD8 *image, int stride, int flags, int x, int y, Bool mask)
+set_bit (CARD8 *image, xf86CursorInfoPtr cursor_info, int x, int y, Bool mask)
 {
-    x = cursor_bitpos (flags, x, mask);
-    image += y * stride;
-    image[(x >> 3)] |= 1 << (x & 7);
+    struct cursor_bit bit = cursor_bitpos(image, cursor_info, x, y, mask);
+    *bit.byte |= 1 << bit.bitpos;
 }
     
 /*
@@ -188,7 +212,6 @@ xf86_crtc_convert_cursor_to_argb (xf86CrtcPtr crtc, unsigned char *src)
     CARD32		*cursor_image = (CARD32 *) xf86_config->cursor_image;
     int			x, y;
     int			xin, yin;
-    int			stride = cursor_info->MaxWidth >> 2;
     int			flags = cursor_info->Flags;
     CARD32		bits;
 
@@ -203,10 +226,10 @@ xf86_crtc_convert_cursor_to_argb (xf86CrtcPtr crtc, unsigned char *src)
 				    cursor_info->MaxWidth,
 				    cursor_info->MaxHeight,
 				    x, y, &xin, &yin);
-	    if (get_bit (src, stride, flags, xin, yin, TRUE) ==
+	    if (get_bit (src, cursor_info, xin, yin, TRUE) ==
 		((flags & HARDWARE_CURSOR_INVERT_MASK) == 0))
 	    {
-		if (get_bit (src, stride, flags, xin, yin, FALSE))
+		if (get_bit (src, cursor_info, xin, yin, FALSE))
 		    bits = xf86_config->cursor_fg;
 		else
 		    bits = xf86_config->cursor_bg;
@@ -327,10 +350,13 @@ xf86_crtc_set_cursor_position (xf86CrtcPtr crtc, int x, int y)
 						  xf86CursorScreenKey);
 	struct pict_f_vector   v;
 
-	v.v[0] = x + ScreenPriv->HotX; v.v[1] = y + ScreenPriv->HotY; v.v[2] = 1;
+	v.v[0] = (x + ScreenPriv->HotX) + 0.5;
+	v.v[1] = (y + ScreenPriv->HotY) + 0.5;
+	v.v[2] = 1;
 	pixman_f_transform_point (&crtc->f_framebuffer_to_crtc, &v);
-	x = floor (v.v[0] + 0.5);
-	y = floor (v.v[1] + 0.5);
+	/* cursor will have 0.5 added to it already so floor is sufficent */
+	x = floor (v.v[0]);
+	y = floor (v.v[1]);
 	/*
 	 * Transform position of cursor upper left corner
 	 */
@@ -410,7 +436,6 @@ xf86_crtc_load_cursor_image (xf86CrtcPtr crtc, CARD8 *src)
         int x, y;
     	int xin, yin;
 	int stride = cursor_info->MaxWidth >> 2;
-	int flags = cursor_info->Flags;
 	
 	cursor_image = xf86_config->cursor_image;
 	memset(cursor_image, 0, cursor_info->MaxHeight * stride);
@@ -422,10 +447,10 @@ xf86_crtc_load_cursor_image (xf86CrtcPtr crtc, CARD8 *src)
 					cursor_info->MaxWidth,
 					cursor_info->MaxHeight,
 					x, y, &xin, &yin);
-		if (get_bit(src, stride, flags, xin, yin, FALSE))
-		    set_bit(cursor_image, stride, flags, x, y, FALSE);
-		if (get_bit(src, stride, flags, xin, yin, TRUE))
-		    set_bit(cursor_image, stride, flags, x, y, TRUE);
+		if (get_bit(src, cursor_info, xin, yin, FALSE))
+		    set_bit(cursor_image, cursor_info, x, y, FALSE);
+		if (get_bit(src, cursor_info, xin, yin, TRUE))
+		    set_bit(cursor_image, cursor_info, x, y, TRUE);
 	    }
     }
     crtc->funcs->load_cursor_image (crtc, cursor_image);
@@ -461,11 +486,11 @@ xf86_use_hw_cursor (ScreenPtr screen, CursorPtr cursor)
     xf86CrtcConfigPtr   xf86_config = XF86_CRTC_CONFIG_PTR(scrn);
     xf86CursorInfoPtr	cursor_info = xf86_config->cursor_info;
 
+    ++cursor->refcnt;
     if (xf86_config->cursor)
 	FreeCursor (xf86_config->cursor, None);
     xf86_config->cursor = cursor;
-    ++cursor->refcnt;
-    
+
     if (cursor->bits->width > cursor_info->MaxWidth ||
 	cursor->bits->height> cursor_info->MaxHeight)
 	return FALSE;
@@ -553,7 +578,7 @@ xf86_cursors_init (ScreenPtr screen, int max_width, int max_height, int flags)
     if (!cursor_info)
 	return FALSE;
 
-    xf86_config->cursor_image = xalloc (max_width * max_height * 4);
+    xf86_config->cursor_image = malloc(max_width * max_height * 4);
 
     if (!xf86_config->cursor_image)
     {
@@ -611,7 +636,7 @@ xf86_reload_cursors (ScreenPtr screen)
     cursor_screen_priv = dixLookupPrivate(&screen->devPrivates,
 					  xf86CursorScreenKey);
     /* return if HW cursor is inactive, to avoid displaying two cursors */
-    if (!cursor_screen_priv->isUp)
+    if (!cursor_screen_priv || !cursor_screen_priv->isUp)
 	return;
 
     scrn = xf86Screens[screen->myNum];
@@ -661,11 +686,8 @@ xf86_cursors_fini (ScreenPtr screen)
 	xf86DestroyCursorInfoRec (xf86_config->cursor_info);
 	xf86_config->cursor_info = NULL;
     }
-    if (xf86_config->cursor_image)
-    {
-	xfree (xf86_config->cursor_image);
-	xf86_config->cursor_image = NULL;
-    }
+    free(xf86_config->cursor_image);
+    xf86_config->cursor_image = NULL;
     if (xf86_config->cursor)
     {
 	FreeCursor (xf86_config->cursor, None);

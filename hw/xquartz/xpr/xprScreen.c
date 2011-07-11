@@ -36,6 +36,7 @@
 #include "quartzCommon.h"
 #include "inputstr.h"
 #include "quartz.h"
+#include "quartzRandR.h"
 #include "xpr.h"
 #include "xprEvent.h"
 #include "pseudoramiX.h"
@@ -157,7 +158,7 @@ displayScreenBounds(CGDirectDisplayID id)
               (int)frame.origin.x, (int)frame.origin.y);
     
     /* Remove menubar to help standard X11 window managers. */
-    if (quartzEnableRootless && 
+    if (XQuartzIsRootless && 
         frame.origin.x == 0 && frame.origin.y == 0) {
         frame.origin.y += aquaMenuBarHeight;
         frame.size.height -= aquaMenuBarHeight;
@@ -176,7 +177,7 @@ displayScreenBounds(CGDirectDisplayID id)
  *  with PseudoramiX.
  */
 static void
-xprAddPseudoramiXScreens(int *x, int *y, int *width, int *height)
+xprAddPseudoramiXScreens(int *x, int *y, int *width, int *height, ScreenPtr pScreen)
 {
     CGDisplayCount i, displayCount;
     CGDirectDisplayID *displayList = NULL;
@@ -184,8 +185,22 @@ xprAddPseudoramiXScreens(int *x, int *y, int *width, int *height)
 
     // Find all the CoreGraphics displays
     CGGetActiveDisplayList(0, NULL, &displayCount);
-    displayList = xalloc(displayCount * sizeof(CGDirectDisplayID));
+    DEBUG_LOG("displayCount: %d\n", (int)displayCount);
+
+    if(!displayCount) {
+        ErrorF("CoreGraphics has reported no connected displays.  Creating a stub 800x600 display.\n");
+        *x = *y = 0;
+        *width = 800;
+        *height = 600;
+        PseudoramiXAddScreen(*x, *y, *width, *height);
+        return;
+    }
+
+    displayList = malloc(displayCount * sizeof(CGDirectDisplayID));
+    if(!displayList)
+        FatalError("Unable to allocate memory for list of displays.\n");
     CGGetActiveDisplayList(displayCount, displayList, &displayCount);
+    QuartzCopyDisplayIDs(pScreen, displayCount, displayList);
 
     /* Get the union of all screens */
     for (i = 0; i < displayCount; i++) {
@@ -219,7 +234,7 @@ xprAddPseudoramiXScreens(int *x, int *y, int *width, int *height)
                              frame.size.width, frame.size.height);
     }
 
-    xfree(displayList);
+    free(displayList);
 }
 
 /*
@@ -259,7 +274,8 @@ xprDisplayInit(void)
     AppleDRIExtensionInit();
     xprAppleWMInit();
 
-    if (!quartzEnableRootless)
+    XQuartzIsRootless = XQuartzRootlessDefault;
+    if (!XQuartzIsRootless)
         RootlessHideAllWindows();
 }
 
@@ -323,6 +339,7 @@ xprAddScreen(int index, ScreenPtr pScreen)
         ErrorF("Warning: noPseudoramiXExtension!\n");
         
         dpy = displayAtIndex(index);
+        QuartzCopyDisplayIDs(pScreen, 1, &dpy);
 
         frame = displayScreenBounds(dpy);
 
@@ -333,7 +350,7 @@ xprAddScreen(int index, ScreenPtr pScreen)
     }
     else
     {
-        xprAddPseudoramiXScreens(&dfb->x, &dfb->y, &dfb->width, &dfb->height);
+        xprAddPseudoramiXScreens(&dfb->x, &dfb->y, &dfb->width, &dfb->height, pScreen);
     }
 
     /* Passing zero width (pitch) makes miCreateScreenResources set the
@@ -384,7 +401,7 @@ xprUpdateScreen(ScreenPtr pScreen)
     rootlessGlobalOffsetX = darwinMainScreenX;
     rootlessGlobalOffsetY = darwinMainScreenY;
 
-    AppleWMSetScreenOrigin(WindowTable[pScreen->myNum]);
+    AppleWMSetScreenOrigin(pScreen->root);
 
     RootlessRepositionWindows(pScreen);
     RootlessUpdateScreenPixmap(pScreen);
@@ -403,7 +420,7 @@ xprInitInput(int argc, char **argv)
     rootlessGlobalOffsetY = darwinMainScreenY;
 
     for (i = 0; i < screenInfo.numScreens; i++)
-        AppleWMSetScreenOrigin(WindowTable[i]);
+        AppleWMSetScreenOrigin(screenInfo.screens[i]->root);
 }
 
 /*

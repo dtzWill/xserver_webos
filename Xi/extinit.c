@@ -70,7 +70,6 @@ SOFTWARE.
 #include "extinit.h"
 #include "exglobals.h"
 #include "swaprep.h"
-#include "registry.h"
 #include "privates.h"
 #include "protocol-versions.h"
 
@@ -378,9 +377,7 @@ Mask PropagateMask[MAXDEVICES];
  *
  */
 
-static int XIClientPrivateKeyIndex;
-DevPrivateKey XIClientPrivateKey = &XIClientPrivateKeyIndex;
-
+DevPrivateKeyRec XIClientPrivateKeyRec;
 
 /*****************************************************************
  *
@@ -1123,7 +1120,6 @@ RestoreExtensionEvents(void)
 static void
 IResetProc(ExtensionEntry * unused)
 {
-
     ReplySwapVector[IReqCode] = ReplyNotSwappd;
     EventSwapVector[DeviceValuator] = NotImplemented;
     EventSwapVector[DeviceKeyPress] = NotImplemented;
@@ -1156,7 +1152,7 @@ void
 AssignTypeAndName(DeviceIntPtr dev, Atom type, char *name)
 {
     dev->xinput_type = type;
-    dev->name = (char *)xalloc(strlen(name) + 1);
+    dev->name = (char *)malloc(strlen(name) + 1);
     strcpy(dev->name, name);
 }
 
@@ -1256,7 +1252,7 @@ XInputExtensionInit(void)
         SERVER_XI_MINOR_VERSION,
     };
 
-    if (!dixRequestPrivate(XIClientPrivateKey, sizeof(XIClientRec)))
+    if (!dixRegisterPrivateKey(&XIClientPrivateKeyRec, PRIVATE_CLIENT, sizeof(XIClientRec)))
         FatalError("Cannot request private for XI.\n");
 
     if (!AddCallback(&ClientStateCallback, XIClientCallback, 0))
@@ -1269,8 +1265,10 @@ XInputExtensionInit(void)
 	IEventBase = extEntry->eventBase;
 	XIVersion = thisversion;
 	MakeDeviceTypeAtoms();
-	RT_INPUTCLIENT = CreateNewResourceType((DeleteType) InputClientGone);
-	RegisterResourceName(RT_INPUTCLIENT, "INPUTCLIENT");
+	RT_INPUTCLIENT = CreateNewResourceType((DeleteType) InputClientGone,
+					       "INPUTCLIENT");
+	if (!RT_INPUTCLIENT)
+	    FatalError("Failed to add resource type for XI.\n");
 	FixExtensionEvents(extEntry);
 	ReplySwapVector[IReqCode] = (ReplySwapPtr) SReplyIDispatch;
 	EventSwapVector[DeviceValuator] = SEventIDispatch;
@@ -1302,6 +1300,8 @@ XInputExtensionInit(void)
 
 	inputInfo.all_devices = &xi_all_devices;
 	inputInfo.all_master_devices = &xi_all_master_devices;
+
+	XIResetProperties();
     } else {
 	FatalError("IExtensionInit: AddExtensions failed\n");
     }

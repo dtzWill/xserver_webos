@@ -37,7 +37,7 @@
  * most all of the useful functions in this file are declared static and
  * do not appear in the doxygen documentation.
  *
- * Much of the low-level work is done by functions in #dmxextension.c
+ * Much of the low-level work is done by functions in \a dmxextension.c
  *
  * Please see the Client-to-Server DMX Extension to the X Protocol
  * document for details about the protocol.  */
@@ -235,7 +235,7 @@ static int ProcDMXQueryVersion(ClientPtr client)
 	swapl(&rep.patchVersion, n);
     }
     WriteToClient(client, sizeof(xDMXQueryVersionReply), (char *)&rep);
-    return client->noClientException;
+    return Success;
 }
 
 static int ProcDMXSync(ClientPtr client)
@@ -257,7 +257,7 @@ static int ProcDMXSync(ClientPtr client)
         swapl(&rep.status, n);
     }
     WriteToClient(client, sizeof(xDMXSyncReply), (char *)&rep);
-    return client->noClientException;
+    return Success;
 }
 
 static int ProcDMXForceWindowCreation(ClientPtr client)
@@ -326,7 +326,7 @@ static int ProcDMXGetScreenCount(ClientPtr client)
         swapl(&rep.screenCount, n);
     }
     WriteToClient(client, sizeof(xDMXGetScreenCountReply), (char *)&rep);
-    return client->noClientException;
+    return Success;
 }
 
 static int ProcDMXGetScreenAttributes(ClientPtr client)
@@ -362,7 +362,8 @@ static int ProcDMXGetScreenAttributes(ClientPtr client)
     paddedLength            = pad_to_int32(length);
     rep.type                = X_Reply;
     rep.sequenceNumber      = client->sequence;
-    rep.length              = bytes_to_int32(paddedLength);
+    rep.length              = bytes_to_int32((sizeof(xDMXGetScreenAttributesReply) - sizeof(xGenericReply))
+                                             + paddedLength);
     rep.displayNameLength   = length;
 
     if (client->swapped) {
@@ -383,7 +384,7 @@ static int ProcDMXGetScreenAttributes(ClientPtr client)
     }
     WriteToClient(client, sizeof(xDMXGetScreenAttributesReply), (char *)&rep);
     if (length) WriteToClient(client, length, (char *)attr.displayName);
-    return client->noClientException;
+    return Success;
 }
 
 static int ProcDMXChangeScreensAttributes(ClientPtr client)
@@ -418,7 +419,7 @@ static int ProcDMXChangeScreensAttributes(ClientPtr client)
     
     if (!_DMXXineramaActive()) goto noxinerama;
 
-    if (!(attribs = xalloc(stuff->screenCount * sizeof(*attribs))))
+    if (!(attribs = malloc(stuff->screenCount * sizeof(*attribs))))
         return BadAlloc;
 
     for (i = 0; i < stuff->screenCount; i++) {
@@ -437,7 +438,7 @@ static int ProcDMXChangeScreensAttributes(ClientPtr client)
 				       &errorScreen);
 #endif
 
-    xfree(attribs);
+    free(attribs);
 
     if (status == BadValue) return status;
 
@@ -456,7 +457,7 @@ static int ProcDMXChangeScreensAttributes(ClientPtr client)
     WriteToClient(client,
                   sizeof(xDMXChangeScreensAttributesReply),
                   (char *)&rep);
-    return client->noClientException;
+    return Success;
 }
 
 static int ProcDMXAddScreen(ClientPtr client)
@@ -483,7 +484,7 @@ static int ProcDMXAddScreen(ClientPtr client)
     value_list = (CARD32 *)(stuff + 1);
     count      = dmxFetchScreenAttributes(stuff->valueMask, &attr, value_list);
     
-    if (!(name = xalloc(stuff->displayNameLength + 1 + 4)))
+    if (!(name = malloc(stuff->displayNameLength + 1 + 4)))
         return BadAlloc;
     memcpy(name, &value_list[count], stuff->displayNameLength);
     name[stuff->displayNameLength] = '\0';
@@ -491,7 +492,7 @@ static int ProcDMXAddScreen(ClientPtr client)
 
     status = dmxAttachScreen(stuff->physicalScreen, &attr);
 
-    xfree(name);
+    free(name);
 
     rep.type           = X_Reply;
     rep.sequenceNumber = client->sequence;
@@ -507,7 +508,7 @@ static int ProcDMXAddScreen(ClientPtr client)
     WriteToClient(client,
                   sizeof(xDMXAddScreenReply),
                   (char *)&rep);
-    return client->noClientException;
+    return Success;
 }
 
 static int ProcDMXRemoveScreen(ClientPtr client)
@@ -533,7 +534,7 @@ static int ProcDMXRemoveScreen(ClientPtr client)
     WriteToClient(client,
                   sizeof(xDMXRemoveScreenReply),
                   (char *)&rep);
-    return client->noClientException;
+    return Success;
 }
 
 
@@ -611,30 +612,30 @@ static int ProcDMXGetWindowAttributes(ClientPtr client)
 
     REQUEST_SIZE_MATCH(xDMXGetWindowAttributesReq);
 
-    if (!(screens = xalloc(count * sizeof(*screens))))
+    if (!(screens = malloc(count * sizeof(*screens))))
         return BadAlloc;
-    if (!(windows = xalloc(count * sizeof(*windows)))) {
-        xfree(screens);
-        return BadAlloc;
-    }
-    if (!(pos = xalloc(count * sizeof(*pos)))) {
-        xfree(windows);
-        xfree(screens);
+    if (!(windows = malloc(count * sizeof(*windows)))) {
+        free(screens);
         return BadAlloc;
     }
-    if (!(vis = xalloc(count * sizeof(*vis)))) {
-        xfree(pos);
-        xfree(windows);
-        xfree(screens);
+    if (!(pos = malloc(count * sizeof(*pos)))) {
+        free(windows);
+        free(screens);
+        return BadAlloc;
+    }
+    if (!(vis = malloc(count * sizeof(*vis)))) {
+        free(pos);
+        free(windows);
+        free(screens);
         return BadAlloc;
     }
 
     if ((count = dmxPopulate(client, stuff->window, screens, windows,
                              pos, vis)) < 0) {
-        xfree(vis);
-        xfree(pos);
-        xfree(windows);
-        xfree(screens);
+        free(vis);
+        free(pos);
+        free(windows);
+        free(screens);
         return BadWindow;
     }
 
@@ -672,12 +673,12 @@ static int ProcDMXGetWindowAttributes(ClientPtr client)
         WriteToClient(client, count * sizeof(*vis),     (char *)vis);
     }
 
-    xfree(vis);
-    xfree(pos);
-    xfree(windows);
-    xfree(screens);
+    free(vis);
+    free(pos);
+    free(windows);
+    free(screens);
 
-    return client->noClientException;
+    return Success;
 }
 
 static int ProcDMXGetDesktopAttributes(ClientPtr client)
@@ -708,7 +709,7 @@ static int ProcDMXGetDesktopAttributes(ClientPtr client)
         swapl(&rep.shiftY, n);
     }
     WriteToClient(client, sizeof(xDMXGetDesktopAttributesReply), (char *)&rep);
-    return client->noClientException;
+    return Success;
 }
 
 static int ProcDMXChangeDesktopAttributes(ClientPtr client)
@@ -751,7 +752,7 @@ static int ProcDMXChangeDesktopAttributes(ClientPtr client)
     WriteToClient(client,
                   sizeof(xDMXChangeDesktopAttributesReply),
                   (char *)&rep);
-    return client->noClientException;
+    return Success;
 }
 
 static int ProcDMXGetInputCount(ClientPtr client)
@@ -771,7 +772,7 @@ static int ProcDMXGetInputCount(ClientPtr client)
         swapl(&rep.inputCount, n);
     }
     WriteToClient(client, sizeof(xDMXGetInputCountReply), (char *)&rep);
-    return client->noClientException;
+    return Success;
 }
 
 static int ProcDMXGetInputAttributes(ClientPtr client)
@@ -809,7 +810,7 @@ static int ProcDMXGetInputAttributes(ClientPtr client)
     }
     WriteToClient(client, sizeof(xDMXGetInputAttributesReply), (char *)&rep);
     if (length) WriteToClient(client, length, (char *)attr.name);
-    return client->noClientException;
+    return Success;
 }
 
 static int ProcDMXAddInput(ClientPtr client)
@@ -836,7 +837,7 @@ static int ProcDMXAddInput(ClientPtr client)
     value_list = (CARD32 *)(stuff + 1);
     count      = dmxFetchInputAttributes(stuff->valueMask, &attr, value_list);
     
-    if (!(name = xalloc(stuff->displayNameLength + 1 + 4)))
+    if (!(name = malloc(stuff->displayNameLength + 1 + 4)))
         return BadAlloc;
     memcpy(name, &value_list[count], stuff->displayNameLength);
     name[stuff->displayNameLength] = '\0';
@@ -844,7 +845,7 @@ static int ProcDMXAddInput(ClientPtr client)
 
     status = dmxAddInput(&attr, &id);
 
-    xfree(name);
+    free(name);
 
     if (status) return status;
 
@@ -860,7 +861,7 @@ static int ProcDMXAddInput(ClientPtr client)
         swapl(&rep.physicalId, n);
     }
     WriteToClient(client, sizeof(xDMXAddInputReply), (char *)&rep);
-    return client->noClientException;
+    return Success;
 }
 
 static int ProcDMXRemoveInput(ClientPtr client)
@@ -886,7 +887,7 @@ static int ProcDMXRemoveInput(ClientPtr client)
         swapl(&rep.status, n);
     }
     WriteToClient(client, sizeof(xDMXRemoveInputReply), (char *)&rep);
-    return client->noClientException;
+    return Success;
 }
 
 static int ProcDMXDispatch(ClientPtr client)

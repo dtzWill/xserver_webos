@@ -6567,42 +6567,62 @@ Handles opcode 0x8d
 static void x86emuOp_lea_word_R_M(u8 X86EMU_UNUSED(op1))
 {
     int mod, rl, rh;
-    u16 *srcreg;
     uint destoffset;
 
-/*
- * TODO: Need to handle address size prefix!
- *
- * lea  eax,[eax+ebx*2] ??
- */
-    
     START_OF_INSTR();
     DECODE_PRINTF("LEA\t");
     FETCH_DECODE_MODRM(mod, rh, rl);
     switch (mod) {
     case 0:
-        srcreg = DECODE_RM_WORD_REGISTER(rh);
-        DECODE_PRINTF(",");
-        destoffset = decode_rm00_address(rl);
-        DECODE_PRINTF("\n");
-        TRACE_AND_STEP();
-        *srcreg = (u16)destoffset;
+        if (M.x86.mode & SYSMODE_PREFIX_ADDR) {
+            u32 *srcreg = DECODE_RM_LONG_REGISTER(rh);
+            DECODE_PRINTF(",");
+            destoffset = decode_rm00_address(rl);
+            DECODE_PRINTF("\n");
+            TRACE_AND_STEP();
+            *srcreg = (u32)destoffset;
+        } else {
+            u16 *srcreg = DECODE_RM_WORD_REGISTER(rh);
+            DECODE_PRINTF(",");
+            destoffset = decode_rm00_address(rl);
+            DECODE_PRINTF("\n");
+            TRACE_AND_STEP();
+            *srcreg = (u16)destoffset;
+        }
         break;
     case 1:
-        srcreg = DECODE_RM_WORD_REGISTER(rh);
-        DECODE_PRINTF(",");
-        destoffset = decode_rm01_address(rl);
-        DECODE_PRINTF("\n");
-        TRACE_AND_STEP();
-        *srcreg = (u16)destoffset;
+        if (M.x86.mode & SYSMODE_PREFIX_ADDR) {
+            u32 *srcreg = DECODE_RM_LONG_REGISTER(rh);
+            DECODE_PRINTF(",");
+            destoffset = decode_rm01_address(rl);
+            DECODE_PRINTF("\n");
+            TRACE_AND_STEP();
+            *srcreg = (u32)destoffset;
+        } else {
+            u16 *srcreg = DECODE_RM_WORD_REGISTER(rh);
+            DECODE_PRINTF(",");
+            destoffset = decode_rm01_address(rl);
+            DECODE_PRINTF("\n");
+            TRACE_AND_STEP();
+            *srcreg = (u16)destoffset;
+        }
         break;
     case 2:
-        srcreg = DECODE_RM_WORD_REGISTER(rh);
-        DECODE_PRINTF(",");
-        destoffset = decode_rm10_address(rl);
-        DECODE_PRINTF("\n");
-        TRACE_AND_STEP();
-        *srcreg = (u16)destoffset;
+        if (M.x86.mode & SYSMODE_PREFIX_ADDR) {
+            u32 *srcreg = DECODE_RM_LONG_REGISTER(rh);
+            DECODE_PRINTF(",");
+            destoffset = decode_rm10_address(rl);
+            DECODE_PRINTF("\n");
+            TRACE_AND_STEP();
+            *srcreg = (u32)destoffset;
+        } else {
+            u16 *srcreg = DECODE_RM_WORD_REGISTER(rh);
+            DECODE_PRINTF(",");
+            destoffset = decode_rm10_address(rl);
+            DECODE_PRINTF("\n");
+            TRACE_AND_STEP();
+            *srcreg = (u16)destoffset;
+        }
         break;
     case 3:                     /* register to register */
         /* undefined.  Do nothing. */
@@ -9671,15 +9691,23 @@ Handles opcode 0xe9
 ****************************************************************************/
 static void x86emuOp_jump_near_IMM(u8 X86EMU_UNUSED(op1))
 {
-    int ip;
+    u32 ip;
 
     START_OF_INSTR();
     DECODE_PRINTF("JMP\t");
-    ip = (s16)fetch_word_imm();
-    ip += (s16)M.x86.R_IP;
-    DECODE_PRINTF2("%04x\n", (u16)ip);
-    TRACE_AND_STEP();
-    M.x86.R_IP = (u16)ip;
+    if (M.x86.mode & SYSMODE_PREFIX_DATA) {
+	ip = (u32)fetch_long_imm();
+	ip += (u32)M.x86.R_EIP;
+	DECODE_PRINTF2("%08x\n", (u32)ip);
+	TRACE_AND_STEP();
+	M.x86.R_EIP = (u32)ip;
+    } else {
+	ip = (s16)fetch_word_imm();
+	ip += (s16)M.x86.R_IP;
+	DECODE_PRINTF2("%04x\n", (u16)ip);
+	TRACE_AND_STEP();
+	M.x86.R_IP = (u16)ip;
+    }
     DECODE_CLEAR_SEGOVR();
     END_OF_INSTR();
 }

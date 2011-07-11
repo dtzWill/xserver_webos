@@ -99,6 +99,12 @@ typedef struct _ShmDesc {
     unsigned long size;
 } ShmDescRec, *ShmDescPtr;
 
+typedef struct _ShmScrPrivateRec {
+    CloseScreenProcPtr CloseScreen;
+    ShmFuncsPtr shmFuncs;
+    DestroyPixmapProcPtr destroyPixmap;
+} ShmScrPrivateRec;
+
 static PixmapPtr fbShmCreatePixmap(XSHM_CREATE_PIXMAP_ARGS);
 static int ShmDetachSegment(
     pointer		/* value */,
@@ -135,12 +141,14 @@ int BadShmSegCode;
 RESTYPE ShmSegType;
 static ShmDescPtr Shmsegs;
 static Bool sharedPixmaps;
-static ShmFuncsPtr shmFuncs[MAXSCREENS];
-static DestroyPixmapProcPtr destroyPixmap[MAXSCREENS];
-static int shmPixmapPrivateIndex;
-static DevPrivateKey shmPixmapPrivate = &shmPixmapPrivateIndex;
+static DevPrivateKeyRec shmScrPrivateKeyRec;
+#define shmScrPrivateKey (&shmScrPrivateKeyRec)
+static DevPrivateKeyRec shmPixmapPrivateKeyRec;
+#define shmPixmapPrivateKey (&shmPixmapPrivateKeyRec)
 static ShmFuncs miFuncs = {NULL, NULL};
 static ShmFuncs fbFuncs = {fbShmCreatePixmap, NULL};
+
+#define ShmGetScreenPriv(s) ((ShmScrPrivateRec *)dixLookupPrivate(&(s)->devPrivates, shmScrPrivateKey))
 
 #define VERIFY_SHMSEG(shmseg,shmdesc,client) \
 { \
@@ -148,7 +156,7 @@ static ShmFuncs fbFuncs = {fbShmCreatePixmap, NULL};
     rc = dixLookupResourceByType((pointer *)&(shmdesc), shmseg, ShmSegType, \
                                  client, DixReadAccess); \
     if (rc != Success) \
-	return (rc == BadValue) ? BadShmSegCode : rc; \
+	return rc; \
 }
 
 #define VERIFY_SHMPTR(shmseg,offset,needwrite,shmdesc,client) \
@@ -205,12 +213,46 @@ static Bool CheckForShmSyscall(void)
         badSysCall = TRUE;
     }
     signal(SIGSYS, oldHandler);
-    return(!badSysCall);
+    return !badSysCall;
 }
 
 #define MUST_CHECK_FOR_SHM_SYSCALL
 
 #endif
+
+static Bool
+ShmCloseScreen(int i, ScreenPtr pScreen)
+{
+    ShmScrPrivateRec *screen_priv = ShmGetScreenPriv(pScreen);
+    pScreen->CloseScreen = screen_priv->CloseScreen;
+    dixSetPrivate(&pScreen->devPrivates, shmScrPrivateKey, NULL);
+    free(screen_priv);
+    return (*pScreen->CloseScreen) (i, pScreen);
+}
+
+static ShmScrPrivateRec *
+ShmInitScreenPriv(ScreenPtr pScreen)
+{
+    ShmScrPrivateRec *screen_priv = ShmGetScreenPriv(pScreen);
+    if (!screen_priv)
+    {
+	screen_priv = calloc(1, sizeof (ShmScrPrivateRec));
+	screen_priv->CloseScreen = pScreen->CloseScreen;
+	dixSetPrivate(&pScreen->devPrivates, shmScrPrivateKey, screen_priv);
+	pScreen->CloseScreen = ShmCloseScreen;
+    }
+    return screen_priv;
+}
+
+static Bool
+ShmRegisterPrivates(void)
+{
+    if (!dixRegisterPrivateKey(&shmScrPrivateKeyRec, PRIVATE_SCREEN, 0))
+	return FALSE;
+    if (!dixRegisterPrivateKey(&shmPixmapPrivateKeyRec, PRIVATE_PIXMAP, 0))
+	return FALSE;
+    return TRUE;
+}
 
 void
 ShmExtensionInit(INITARGS)
@@ -226,24 +268,29 @@ ShmExtensionInit(INITARGS)
     }
 #endif
 
+    if (!ShmRegisterPrivates())
+	return;
+
     sharedPixmaps = xFalse;
     {
       sharedPixmaps = xTrue;
       for (i = 0; i < screenInfo.numScreens; i++)
       {
-	if (!shmFuncs[i])
-	    shmFuncs[i] = &miFuncs;
-	if (!shmFuncs[i]->CreatePixmap)
+	ShmScrPrivateRec *screen_priv = ShmInitScreenPriv(screenInfo.screens[i]);
+	if (!screen_priv->shmFuncs)
+	    screen_priv->shmFuncs = &miFuncs;
+	if (!screen_priv->shmFuncs->CreatePixmap)
 	    sharedPixmaps = xFalse;
       }
       if (sharedPixmaps)
 	for (i = 0; i < screenInfo.numScreens; i++)
 	{
-	    destroyPixmap[i] = screenInfo.screens[i]->DestroyPixmap;
+	    ShmScrPrivateRec *screen_priv = ShmGetScreenPriv(screenInfo.screens[i]);
+	    screen_priv->destroyPixmap = screenInfo.screens[i]->DestroyPixmap;
 	    screenInfo.screens[i]->DestroyPixmap = ShmDestroyPixmap;
 	}
     }
-    ShmSegType = CreateNewResourceType(ShmDetachSegment);
+    ShmSegType = CreateNewResourceType(ShmDetachSegment, "ShmSeg");
     if (ShmSegType &&
 	(extEntry = AddExtension(SHMNAME, ShmNumberEvents, ShmNumberErrors,
 				 ProcShmDispatch, SProcShmDispatch,
@@ -252,6 +299,7 @@ ShmExtensionInit(INITARGS)
 	ShmReqCode = (unsigned char)extEntry->base;
 	ShmCompletionCode = extEntry->eventBase;
 	BadShmSegCode = extEntry->errorBase;
+	SetResourceTypeErrorValue(ShmSegType, BadShmSegCode);
 	EventSwapVector[ShmCompletionCode] = (EventSwapPtr) SShmCompletionEvent;
     }
 }
@@ -261,36 +309,36 @@ static void
 ShmResetProc(ExtensionEntry *extEntry)
 {
     int i;
-
-    for (i = 0; i < MAXSCREENS; i++)
-    {
-	shmFuncs[i] = NULL;
-    }
+    for (i = 0; i < screenInfo.numScreens; i++)
+	ShmRegisterFuncs(screenInfo.screens[i], NULL);
 }
 
 void
 ShmRegisterFuncs(ScreenPtr pScreen, ShmFuncsPtr funcs)
 {
-    shmFuncs[pScreen->myNum] = funcs;
+    if (!ShmRegisterPrivates())
+	return;
+    ShmInitScreenPriv(pScreen)->shmFuncs = funcs;
 }
 
 static Bool
 ShmDestroyPixmap (PixmapPtr pPixmap)
 {
     ScreenPtr	    pScreen = pPixmap->drawable.pScreen;
+    ShmScrPrivateRec *screen_priv = ShmGetScreenPriv(pScreen);
     Bool	    ret;
     if (pPixmap->refcnt == 1)
     {
 	ShmDescPtr  shmdesc;
 	shmdesc = (ShmDescPtr)dixLookupPrivate(&pPixmap->devPrivates,
-					       shmPixmapPrivate);
+					       shmPixmapPrivateKey);
 	if (shmdesc)
 	    ShmDetachSegment ((pointer) shmdesc, pPixmap->drawable.id);
     }
     
-    pScreen->DestroyPixmap = destroyPixmap[pScreen->myNum];
+    pScreen->DestroyPixmap = screen_priv->destroyPixmap;
     ret = (*pScreen->DestroyPixmap) (pPixmap);
-    destroyPixmap[pScreen->myNum] = pScreen->DestroyPixmap;
+    screen_priv->destroyPixmap = pScreen->DestroyPixmap;
     pScreen->DestroyPixmap = ShmDestroyPixmap;
     return ret;
 }
@@ -298,7 +346,7 @@ ShmDestroyPixmap (PixmapPtr pPixmap)
 void
 ShmRegisterFbFuncs(ScreenPtr pScreen)
 {
-    shmFuncs[pScreen->myNum] = &fbFuncs;
+    ShmRegisterFuncs(pScreen, &fbFuncs);
 }
 
 static int
@@ -327,7 +375,7 @@ ProcShmQueryVersion(ClientPtr client)
 	swaps(&rep.gid, n);
     }
     WriteToClient(client, sizeof(xShmQueryVersionReply), (char *)&rep);
-    return (client->noClientException);
+    return Success;
 }
 
 /*
@@ -408,7 +456,7 @@ ProcShmAttach(ClientPtr client)
     if ((stuff->readOnly != xTrue) && (stuff->readOnly != xFalse))
     {
 	client->errorValue = stuff->readOnly;
-        return(BadValue);
+        return BadValue;
     }
     for (shmdesc = Shmsegs;
 	 shmdesc && (shmdesc->shmid != stuff->shmid);
@@ -422,7 +470,7 @@ ProcShmAttach(ClientPtr client)
     }
     else
     {
-	shmdesc = xalloc(sizeof(ShmDescRec));
+	shmdesc = malloc(sizeof(ShmDescRec));
 	if (!shmdesc)
 	    return BadAlloc;
 	shmdesc->addr = shmat(stuff->shmid, 0,
@@ -430,7 +478,7 @@ ProcShmAttach(ClientPtr client)
 	if ((shmdesc->addr == ((char *)-1)) ||
 	    SHMSTAT(stuff->shmid, &buf))
 	{
-	    xfree(shmdesc);
+	    free(shmdesc);
 	    return BadAccess;
 	}
 
@@ -440,7 +488,7 @@ ProcShmAttach(ClientPtr client)
 
 	if (shm_access(client, &(SHM_PERM(buf)), stuff->readOnly) == -1) {
 	    shmdt(shmdesc->addr);
-	    xfree(shmdesc);
+	    free(shmdesc);
 	    return BadAccess;
 	}
 
@@ -453,7 +501,7 @@ ProcShmAttach(ClientPtr client)
     }
     if (!AddResource(stuff->shmseg, ShmSegType, (pointer)shmdesc))
 	return BadAlloc;
-    return(client->noClientException);
+    return Success;
 }
 
 /*ARGSUSED*/
@@ -470,7 +518,7 @@ ShmDetachSegment(pointer value, /* must conform to DeleteType */
     for (prev = &Shmsegs; *prev != shmdesc; prev = &(*prev)->next)
 	;
     *prev = shmdesc->next;
-    xfree(shmdesc);
+    free(shmdesc);
     return Success;
 }
 
@@ -483,7 +531,7 @@ ProcShmDetach(ClientPtr client)
     REQUEST_SIZE_MATCH(xShmDetachReq);
     VERIFY_SHMSEG(stuff->shmseg, shmdesc, client);
     FreeResource(stuff->shmseg, RT_NONE);
-    return(client->noClientException);
+    return Success;
 }
 
 /*
@@ -552,7 +600,7 @@ ProcPanoramiXShmPutImage(ClientPtr client)
     result = dixLookupResourceByType((pointer *)&gc, stuff->gc,
 				     XRT_GC, client, DixReadAccess);
     if (result != Success)
-        return (result == BadValue) ? BadGC : result;
+        return result;
 
     isRoot = (draw->type == XRT_WINDOW) && draw->u.win.root;
 
@@ -565,20 +613,20 @@ ProcPanoramiXShmPutImage(ClientPtr client)
 	stuff->drawable = draw->info[j].id;
 	stuff->gc = gc->info[j].id;
 	if (isRoot) {
-	    stuff->dstX = orig_x - panoramiXdataPtr[j].x;
-	    stuff->dstY = orig_y - panoramiXdataPtr[j].y;
+	    stuff->dstX = orig_x - screenInfo.screens[j]->x;
+	    stuff->dstY = orig_y - screenInfo.screens[j]->y;
 	}
 	result = ProcShmPutImage(client);
-	if(result != client->noClientException) break;
+	if(result != Success) break;
     }
-    return(result);
+    return result;
 }
 
 static int 
 ProcPanoramiXShmGetImage(ClientPtr client)
 {
     PanoramiXRes	*draw;
-    DrawablePtr 	drawables[MAXSCREENS];
+    DrawablePtr 	*drawables;
     DrawablePtr 	pDraw;
     xShmGetImageReply	xgi;
     ShmDescPtr		shmdesc;
@@ -593,7 +641,7 @@ ProcPanoramiXShmGetImage(ClientPtr client)
 
     if ((stuff->format != XYPixmap) && (stuff->format != ZPixmap)) {
 	client->errorValue = stuff->format;
-        return(BadValue);
+        return BadValue;
     }
 
     rc = dixLookupResourceByClass((pointer *)&draw, stuff->drawable,
@@ -624,27 +672,34 @@ ProcPanoramiXShmGetImage(ClientPtr client)
       if( /* check for being onscreen */
 	x < 0 || x + w > PanoramiXPixWidth ||
 	y < 0 || y + h > PanoramiXPixHeight )
-	    return(BadMatch);
+	    return BadMatch;
     } else {
       if( /* check for being onscreen */
-	panoramiXdataPtr[0].x + pDraw->x + x < 0 ||
-	panoramiXdataPtr[0].x + pDraw->x + x + w > PanoramiXPixWidth ||
-        panoramiXdataPtr[0].y + pDraw->y + y < 0 ||
-	panoramiXdataPtr[0].y + pDraw->y + y + h > PanoramiXPixHeight ||
+	screenInfo.screens[0]->x + pDraw->x + x < 0 ||
+	screenInfo.screens[0]->x + pDraw->x + x + w > PanoramiXPixWidth ||
+	screenInfo.screens[0]->y + pDraw->y + y < 0 ||
+	screenInfo.screens[0]->y + pDraw->y + y + h > PanoramiXPixHeight ||
 	 /* check for being inside of border */
        	x < - wBorderWidth((WindowPtr)pDraw) ||
 	x + w > wBorderWidth((WindowPtr)pDraw) + (int)pDraw->width ||
 	y < -wBorderWidth((WindowPtr)pDraw) ||
 	y + h > wBorderWidth ((WindowPtr)pDraw) + (int)pDraw->height)
-	    return(BadMatch);
+	    return BadMatch;
     }
+
+    drawables = calloc(PanoramiXNumScreens, sizeof(DrawablePtr));
+    if(!drawables)
+	return BadAlloc;
 
     drawables[0] = pDraw;
     for(i = 1; i < PanoramiXNumScreens; i++) {
 	rc = dixLookupDrawable(drawables+i, draw->info[i].id, client, 0, 
 			       DixReadAccess);
 	if (rc != Success)
+	{
+	    free(drawables);
 	    return rc;
+	}
     }
 
     xgi.visual = wVisual(((WindowPtr)pDraw));
@@ -683,6 +738,7 @@ ProcPanoramiXShmGetImage(ClientPtr client)
 	    }
 	}
     }
+    free(drawables);
     
     if (client->swapped) {
 	int n;
@@ -693,7 +749,7 @@ ProcPanoramiXShmGetImage(ClientPtr client)
     }
     WriteToClient(client, sizeof(xShmGetImageReply), (char *)&xgi);
 
-    return(client->noClientException);
+    return Success;
 }
 
 static int
@@ -755,7 +811,7 @@ CreatePmap:
 
     VERIFY_SHMSIZE(shmdesc, stuff->offset, size, client);
 
-    if(!(newPix = xalloc(sizeof(PanoramiXRes))))
+    if(!(newPix = malloc(sizeof(PanoramiXRes))))
 	return BadAlloc;
 
     newPix->type = XRT_PIXMAP;
@@ -764,17 +820,19 @@ CreatePmap:
     for(j = 1; j < PanoramiXNumScreens; j++)
 	newPix->info[j].id = FakeClientID(client->index);
 
-    result = (client->noClientException);
+    result = Success;
 
     FOR_NSCREENS(j) {
+	ShmScrPrivateRec *screen_priv;
 	pScreen = screenInfo.screens[j];
 
-	pMap = (*shmFuncs[j]->CreatePixmap)(pScreen, 
+	screen_priv = ShmGetScreenPriv(pScreen);
+	pMap = (*screen_priv->shmFuncs->CreatePixmap)(pScreen,
 				stuff->width, stuff->height, stuff->depth,
 				shmdesc->addr + stuff->offset);
 
 	if (pMap) {
-	    dixSetPrivate(&pMap->devPrivates, shmPixmapPrivate, shmdesc);
+	    dixSetPrivate(&pMap->devPrivates, shmPixmapPrivateKey, shmdesc);
             shmdesc->refcnt++;
 	    pMap->drawable.serialNumber = NEXT_SERIAL_NUMBER;
 	    pMap->drawable.id = newPix->info[j].id;
@@ -794,7 +852,7 @@ CreatePmap:
 	    (*pScreen->DestroyPixmap)(pMap);
 	    FreeResource(newPix->info[j].id, RT_NONE);
 	}
-	xfree(newPix);
+	free(newPix);
     } else 
 	AddResource(stuff->pid, XRT_PIXMAP, newPix);
 
@@ -901,7 +959,6 @@ ProcShmPutImage(ClientPtr client)
 
 	ev.type = ShmCompletionCode;
 	ev.drawable = stuff->drawable;
-	ev.sequenceNumber = client->sequence;
 	ev.minorEvent = X_ShmPutImage;
 	ev.majorEvent = ShmReqCode;
 	ev.shmseg = stuff->shmseg;
@@ -909,7 +966,7 @@ ProcShmPutImage(ClientPtr client)
 	WriteEventsToClient(client, 1, (xEvent *) &ev);
     }
 
-    return (client->noClientException);
+    return Success;
 }
 
 
@@ -930,7 +987,7 @@ ProcShmGetImage(ClientPtr client)
     if ((stuff->format != XYPixmap) && (stuff->format != ZPixmap))
     {
 	client->errorValue = stuff->format;
-        return(BadValue);
+        return BadValue;
     }
     rc = dixLookupDrawable(&pDraw, stuff->drawable, client, 0,
 			   DixReadAccess);
@@ -954,7 +1011,7 @@ ProcShmGetImage(ClientPtr client)
          stuff->y + (int)stuff->height >
 		wBorderWidth((WindowPtr)pDraw) + (int)pDraw->height
         )
-	    return(BadMatch);
+	    return BadMatch;
 	xgi.visual = wVisual(((WindowPtr)pDraw));
     }
     else
@@ -964,7 +1021,7 @@ ProcShmGetImage(ClientPtr client)
 	    stuff->y < 0 ||
 	    stuff->y+(int)stuff->height > pDraw->height
 	    )
-	    return(BadMatch);
+	    return BadMatch;
 	xgi.visual = None;
     }
     xgi.type = X_Reply;
@@ -1023,7 +1080,7 @@ ProcShmGetImage(ClientPtr client)
     }
     WriteToClient(client, sizeof(xShmGetImageReply), (char *)&xgi);
 
-    return(client->noClientException);
+    return Success;
 }
 
 static PixmapPtr
@@ -1052,6 +1109,7 @@ ProcShmCreatePixmap(ClientPtr client)
     DepthPtr pDepth;
     int i, rc;
     ShmDescPtr shmdesc;
+    ShmScrPrivateRec *screen_priv;
     REQUEST(xShmCreatePixmapReq);
     unsigned int width, height, depth;
     unsigned long size;
@@ -1100,7 +1158,8 @@ CreatePmap:
 	return BadAlloc;
 
     VERIFY_SHMSIZE(shmdesc, stuff->offset, size, client);
-    pMap = (*shmFuncs[pDraw->pScreen->myNum]->CreatePixmap)(
+    screen_priv = ShmGetScreenPriv(pDraw->pScreen);
+    pMap = (*screen_priv->shmFuncs->CreatePixmap)(
 			    pDraw->pScreen, stuff->width,
 			    stuff->height, stuff->depth,
 			    shmdesc->addr + stuff->offset);
@@ -1112,17 +1171,17 @@ CreatePmap:
 	    pDraw->pScreen->DestroyPixmap(pMap);
 	    return rc;
 	}
-	dixSetPrivate(&pMap->devPrivates, shmPixmapPrivate, shmdesc);
+	dixSetPrivate(&pMap->devPrivates, shmPixmapPrivateKey, shmdesc);
 	shmdesc->refcnt++;
 	pMap->drawable.serialNumber = NEXT_SERIAL_NUMBER;
 	pMap->drawable.id = stuff->pid;
 	if (AddResource(stuff->pid, RT_PIXMAP, (pointer)pMap))
 	{
-	    return(client->noClientException);
+	    return Success;
 	}
 	pDraw->pScreen->DestroyPixmap(pMap);
     }
-    return (BadAlloc);
+    return BadAlloc;
 }
 
 static int

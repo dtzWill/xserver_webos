@@ -37,7 +37,8 @@
 #define AccelProfileSimple 4
 #define AccelProfilePower 5
 #define AccelProfileLinear 6
-#define AccelProfileLAST AccelProfileLinear
+#define AccelProfileSmoothLimited 7
+#define AccelProfileLAST AccelProfileSmoothLimited
 
 /* fwd */
 struct _DeviceVelocityRec;
@@ -60,6 +61,9 @@ typedef struct _MotionTracker {
     int time;         /* time of creation */
     int dir;        /* initial direction bitfield */
 } MotionTracker, *MotionTrackerPtr;
+
+/* number of properties for predictable acceleration */
+#define NPROPS_PREDICTABLE_ACCEL 4
 
 /**
  * Contains all data needed to implement mouse ballistics
@@ -87,8 +91,8 @@ typedef struct _DeviceVelocityRec {
     struct {   /* to be able to query this information */
         int     profile_number;
     } statistics;
+    long    prop_handlers[NPROPS_PREDICTABLE_ACCEL];
 } DeviceVelocityRec, *DeviceVelocityPtr;
-
 
 extern _X_EXPORT void
 InitVelocityData(DeviceVelocityPtr vel);
@@ -108,6 +112,9 @@ FreeVelocityData(DeviceVelocityPtr vel);
 
 extern _X_INTERNAL BOOL
 InitializePredictableAccelerationProperties(DeviceIntPtr dev);
+
+extern _X_INTERNAL BOOL
+DeletePredictableAccelerationProperties(DeviceIntPtr dev);
 
 extern _X_EXPORT int
 SetAccelerationProfile(DeviceVelocityPtr vel, int profile_num);

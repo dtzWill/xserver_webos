@@ -41,12 +41,9 @@
 #include "servermd.h"
 #include "picturestr.h"
 #include "xace.h"
-#include "registry.h"
 
-static int PictureScreenPrivateKeyIndex;
-DevPrivateKey PictureScreenPrivateKey = &PictureScreenPrivateKeyIndex;
-static int PictureWindowPrivateKeyIndex;
-DevPrivateKey	PictureWindowPrivateKey = &PictureWindowPrivateKeyIndex;
+DevPrivateKeyRec PictureScreenPrivateKeyRec;
+DevPrivateKeyRec PictureWindowPrivateKeyRec;
 static int	PictureGeneration;
 RESTYPE		PictureType;
 RESTYPE		PictFormatType;
@@ -90,8 +87,8 @@ PictureCloseScreen (int index, ScreenPtr pScreen)
 	    (*ps->CloseIndexed) (pScreen, &ps->formats[n]);
     GlyphUninit (pScreen);
     SetPictureScreen(pScreen, 0);
-    xfree (ps->formats);
-    xfree (ps);
+    free(ps->formats);
+    free(ps);
     return ret;
 }
 
@@ -338,7 +335,7 @@ PictureCreateDefaultFormats (ScreenPtr pScreen, int *nformatp)
     }
     
 
-    pFormats = xcalloc (nformats, sizeof (PictFormatRec));
+    pFormats = calloc(nformats, sizeof (PictFormatRec));
     if (!pFormats)
 	return 0;
     for (f = 0; f < nformats; f++)
@@ -618,20 +615,23 @@ PictureInit (ScreenPtr pScreen, PictFormatPtr formats, int nformats)
     
     if (PictureGeneration != serverGeneration)
     {
-	PictureType = CreateNewResourceType (FreePicture);
+	PictureType = CreateNewResourceType (FreePicture, "PICTURE");
 	if (!PictureType)
 	    return FALSE;
-	PictFormatType = CreateNewResourceType (FreePictFormat);
+	PictFormatType = CreateNewResourceType (FreePictFormat, "PICTFORMAT");
 	if (!PictFormatType)
 	    return FALSE;
-	GlyphSetType = CreateNewResourceType (FreeGlyphSet);
+	GlyphSetType = CreateNewResourceType (FreeGlyphSet, "GLYPHSET");
 	if (!GlyphSetType)
 	    return FALSE;
 	PictureGeneration = serverGeneration;
-	RegisterResourceName (PictureType, "PICTURE");
-	RegisterResourceName (PictFormatType, "PICTFORMAT");
-	RegisterResourceName (GlyphSetType, "GLYPHSET");
     }
+    if (!dixRegisterPrivateKey(&PictureScreenPrivateKeyRec, PRIVATE_SCREEN, 0))
+	return FALSE;
+
+    if (!dixRegisterPrivateKey(&PictureWindowPrivateKeyRec, PRIVATE_WINDOW, 0))
+	return FALSE;
+
     if (!formats)
     {
 	formats = PictureCreateDefaultFormats (pScreen, &nformats);
@@ -642,7 +642,7 @@ PictureInit (ScreenPtr pScreen, PictFormatPtr formats, int nformats)
     {
 	if (!AddResource (formats[n].id, PictFormatType, (pointer) (formats+n)))
 	{
-	    xfree (formats);
+	    free(formats);
 	    return FALSE;
 	}
 	if (formats[n].type == PictTypeIndexed)
@@ -673,10 +673,10 @@ PictureInit (ScreenPtr pScreen, PictFormatPtr formats, int nformats)
 	}
 	formats[n].format = PICT_FORMAT(0,type,a,r,g,b);
     }
-    ps = (PictureScreenPtr) xalloc (sizeof (PictureScreenRec));
+    ps = (PictureScreenPtr) malloc(sizeof (PictureScreenRec));
     if (!ps)
     {
-	xfree (formats);
+	free(formats);
 	return FALSE;
     }
     SetPictureScreen(pScreen, ps);
@@ -703,8 +703,8 @@ PictureInit (ScreenPtr pScreen, PictFormatPtr formats, int nformats)
     {
 	PictureResetFilters (pScreen);
 	SetPictureScreen(pScreen, 0);
-	xfree (formats);
-	xfree (ps);
+	free(formats);
+	free(ps);
 	return FALSE;
     }
 
@@ -757,7 +757,7 @@ CreatePicture (Picture		pid,
     PicturePtr		pPicture;
     PictureScreenPtr	ps = GetPictureScreen(pDrawable->pScreen);
 
-    pPicture = (PicturePtr)xalloc(sizeof(PictureRec));
+    pPicture = dixAllocateObjectWithPrivates(PictureRec, PRIVATE_PICTURE);
     if (!pPicture)
     {
 	*error = BadAlloc;
@@ -768,7 +768,6 @@ CreatePicture (Picture		pid,
     pPicture->pDrawable = pDrawable;
     pPicture->pFormat = pFormat;
     pPicture->format = pFormat->format | (pDrawable->bitsPerPixel << 24);
-    pPicture->devPrivates = NULL;
 
     /* security creation/labeling check */
     *error = XaceHook(XACE_RESOURCE_ACCESS, client, pid, PictureType, pPicture,
@@ -878,7 +877,7 @@ static void initGradient(SourcePictPtr pGradient, int stopCount,
         dpos = stopPoints[i];
     }
 
-    pGradient->gradient.stops = xalloc(stopCount*sizeof(PictGradientStop));
+    pGradient->gradient.stops = malloc(stopCount*sizeof(PictGradientStop));
     if (!pGradient->gradient.stops) {
         *error = BadAlloc;
         return;
@@ -900,12 +899,11 @@ static void initGradient(SourcePictPtr pGradient, int stopCount,
 static PicturePtr createSourcePicture(void)
 {
     PicturePtr pPicture;
-    pPicture = (PicturePtr) xalloc(sizeof(PictureRec));
+    pPicture = dixAllocateObjectWithPrivates(PictureRec, PRIVATE_PICTURE);
     pPicture->pDrawable = 0;
     pPicture->pFormat = 0;
     pPicture->pNext = 0;
     pPicture->format = PICT_a8r8g8b8;
-    pPicture->devPrivates = 0;
 
     SetPictureToDefaults(pPicture);
     return pPicture;
@@ -922,10 +920,10 @@ CreateSolidPicture (Picture pid, xRenderColor *color, int *error)
     }
 
     pPicture->id = pid;
-    pPicture->pSourcePict = (SourcePictPtr) xalloc(sizeof(PictSolidFill));
+    pPicture->pSourcePict = (SourcePictPtr) malloc(sizeof(PictSolidFill));
     if (!pPicture->pSourcePict) {
         *error = BadAlloc;
-        xfree(pPicture);
+        free(pPicture);
         return 0;
     }
     pPicture->pSourcePict->type = SourcePictTypeSolidFill;
@@ -951,10 +949,10 @@ CreateLinearGradientPicture (Picture pid, xPointFixed *p1, xPointFixed *p2,
     }
 
     pPicture->id = pid;
-    pPicture->pSourcePict = (SourcePictPtr) xalloc(sizeof(PictLinearGradient));
+    pPicture->pSourcePict = (SourcePictPtr) malloc(sizeof(PictLinearGradient));
     if (!pPicture->pSourcePict) {
         *error = BadAlloc;
-        xfree(pPicture);
+        free(pPicture);
         return 0;
     }
 
@@ -964,7 +962,7 @@ CreateLinearGradientPicture (Picture pid, xPointFixed *p1, xPointFixed *p2,
 
     initGradient(pPicture->pSourcePict, nStops, stops, colors, error);
     if (*error) {
-        xfree(pPicture);
+        free(pPicture);
         return 0;
     }
     return pPicture;
@@ -992,10 +990,10 @@ CreateRadialGradientPicture (Picture pid, xPointFixed *inner, xPointFixed *outer
     }
 
     pPicture->id = pid;
-    pPicture->pSourcePict = (SourcePictPtr) xalloc(sizeof(PictRadialGradient));
+    pPicture->pSourcePict = (SourcePictPtr) malloc(sizeof(PictRadialGradient));
     if (!pPicture->pSourcePict) {
         *error = BadAlloc;
-        xfree(pPicture);
+        free(pPicture);
         return 0;
     }
     radial = &pPicture->pSourcePict->radial;
@@ -1016,7 +1014,7 @@ CreateRadialGradientPicture (Picture pid, xPointFixed *inner, xPointFixed *outer
     
     initGradient(pPicture->pSourcePict, nStops, stops, colors, error);
     if (*error) {
-        xfree(pPicture);
+        free(pPicture);
         return 0;
     }
     return pPicture;
@@ -1040,10 +1038,10 @@ CreateConicalGradientPicture (Picture pid, xPointFixed *center, xFixed angle,
     }
 
     pPicture->id = pid;
-    pPicture->pSourcePict = (SourcePictPtr) xalloc(sizeof(PictConicalGradient));
+    pPicture->pSourcePict = (SourcePictPtr) malloc(sizeof(PictConicalGradient));
     if (!pPicture->pSourcePict) {
         *error = BadAlloc;
-        xfree(pPicture);
+        free(pPicture);
         return 0;
     }
 
@@ -1053,7 +1051,7 @@ CreateConicalGradientPicture (Picture pid, xPointFixed *center, xFixed angle,
 
     initGradient(pPicture->pSourcePict, nStops, stops, colors, error);
     if (*error) {
-        xfree(pPicture);
+        free(pPicture);
         return 0;
     }
     return pPicture;
@@ -1119,7 +1117,6 @@ ChangePicture (PicturePtr	pPicture,
 			if (error != Success)
 			{
 			    client->errorValue = pid;
-			    error = (error == BadValue) ? BadPixmap : error;
 			    break;
 			}
 			if (pAlpha->pDrawable == NULL ||
@@ -1180,7 +1177,6 @@ ChangePicture (PicturePtr	pPicture,
 			if (error != Success)
 			{
 			    client->errorValue = pid;
-			    error = (error == BadValue) ? BadPixmap : error;
 			    break;
 			}
 		    }
@@ -1304,8 +1300,7 @@ SetPictureClipRects (PicturePtr	pPicture,
     RegionPtr		clientClip;
     int			result;
 
-    clientClip = RECTS_TO_REGION(pScreen,
-				 nRect, rects, CT_UNSORTED);
+    clientClip = RegionFromRects(nRect, rects, CT_UNSORTED);
     if (!clientClip)
 	return BadAlloc;
     result =(*ps->ChangePictureClip) (pPicture, CT_REGION, 
@@ -1335,14 +1330,13 @@ SetPictureClipRegion (PicturePtr    pPicture,
     if (pRegion)
     {
         type = CT_REGION;
-        clientClip = REGION_CREATE (pScreen,
-                                    REGION_EXTENTS(pScreen, pRegion),
-                                    REGION_NUM_RECTS(pRegion));
+        clientClip = RegionCreate(RegionExtents(pRegion),
+                                  RegionNumRects(pRegion));
         if (!clientClip)
             return BadAlloc;
-        if (!REGION_COPY (pSCreen, clientClip, pRegion))
+        if (!RegionCopy(clientClip, pRegion))
         {
-            REGION_DESTROY (pScreen, clientClip);
+            RegionDestroy(clientClip);
             return BadAlloc;
         }
     }
@@ -1389,7 +1383,7 @@ SetPictureTransform (PicturePtr	    pPicture,
     {
 	if (!pPicture->transform)
 	{
-	    pPicture->transform = (PictTransform *) xalloc (sizeof (PictTransform));
+	    pPicture->transform = (PictTransform *) malloc(sizeof (PictTransform));
 	    if (!pPicture->transform)
 		return BadAlloc;
 	}
@@ -1399,7 +1393,7 @@ SetPictureTransform (PicturePtr	    pPicture,
     {
 	if (pPicture->transform)
 	{
-	    xfree (pPicture->transform);
+	    free(pPicture->transform);
 	    pPicture->transform = 0;
 	}
     }
@@ -1468,9 +1462,9 @@ CopyPicture (PicturePtr	pSrc,
 		    RegionPtr clientClip;
 		    RegionPtr srcClientClip = (RegionPtr)pSrc->clientClip;
 
-		    clientClip = REGION_CREATE(pSrc->pDrawable->pScreen,
-			REGION_EXTENTS(pSrc->pDrawable->pScreen, srcClientClip),
-			REGION_NUM_RECTS(srcClientClip));
+		    clientClip = RegionCreate(
+			RegionExtents(srcClientClip),
+			RegionNumRects(srcClientClip));
 		    (*ps->ChangePictureClip)(pDst, CT_REGION, clientClip, 0);
 		}
 		break;
@@ -1530,15 +1524,14 @@ FreePicture (pointer	value,
 
     if (--pPicture->refcnt == 0)
     {
-	if (pPicture->transform)
-	    xfree (pPicture->transform);
+	free(pPicture->transform);
 
 	if (pPicture->pSourcePict)
 	{
 	    if (pPicture->pSourcePict->type != SourcePictTypeSolidFill)
-		xfree(pPicture->pSourcePict->linear.stops);
+		free(pPicture->pSourcePict->linear.stops);
 
-	    xfree(pPicture->pSourcePict);
+	    free(pPicture->pSourcePict);
 	}
 
 	if (pPicture->pDrawable)
@@ -1572,8 +1565,7 @@ FreePicture (pointer	value,
                 (*pScreen->DestroyPixmap) ((PixmapPtr)pPicture->pDrawable);
             }
         }
-	dixFreePrivates(pPicture->devPrivates);
-	xfree (pPicture);
+	dixFreeObjectWithPrivates(pPicture, PRIVATE_PICTURE);
     }
     return Success;
 }

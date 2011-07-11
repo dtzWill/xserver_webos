@@ -9,7 +9,7 @@
  * Copyright © 2002 MontaVista Software Inc.
  * Copyright © 2005 OpenedHand Ltd.
  * Copyright © 2006 Nokia Corporation
- * 
+ *
  * Permission to use, copy, modify, distribute, and sell this software and its
  * documentation for any purpose is hereby granted without fee, provided that
  * the above copyright notice appear in all copies and that both that
@@ -76,7 +76,7 @@ TsRead (int fd, void *closure)
         if (event.pressure) {
             flags = KD_BUTTON_1;
 
-            /* 
+            /*
              * Here we test for the touch screen driver actually being on the
              * touch screen, if it is we send absolute coordinates. If not,
              * then we send delta's so that we can track the entire vga screen.
@@ -117,17 +117,24 @@ TslibEnable (KdPointerInfo *pi)
         pi->path = strdup("/dev/input/touchscreen0");
         ErrorF("[tslib/TslibEnable] no device path given, trying %s\n", pi->path);
     }
+
     private->tsDev = ts_open(pi->path, 0);
-    private->fd = ts_fd(private->tsDev);
-    if (!private->tsDev || ts_config(private->tsDev) || private->fd < 0) {
+    if (!private->tsDev) {
         ErrorF("[tslib/TslibEnable] failed to open %s\n", pi->path);
-        if (private->fd >= 0)
-            close(private->fd);
         return BadAlloc;
     }
 
+    if (ts_config(private->tsDev)) {
+        ErrorF("[tslib/TslibEnable] failed to load configuration\n");
+        ts_close(private->tsDev);
+        private->tsDev = NULL;
+        return BadValue;
+    }
+
+    private->fd = ts_fd(private->tsDev);
+
     KdRegisterFd(private->fd, TsRead, pi);
-  
+
     return Success;
 }
 
@@ -155,9 +162,9 @@ TslibInit (KdPointerInfo *pi)
 
     if (!pi || !pi->dixdev)
         return !Success;
-    
+
     pi->driverPrivate = (struct TslibPrivate *)
-                        xcalloc(sizeof(struct TslibPrivate), 1);
+                        calloc(sizeof(struct TslibPrivate), 1);
     if (!pi->driverPrivate)
         return !Success;
 
@@ -175,10 +182,8 @@ TslibInit (KdPointerInfo *pi)
 static void
 TslibFini (KdPointerInfo *pi)
 {
-    if (pi->driverPrivate) {
-        xfree(pi->driverPrivate);
-        pi->driverPrivate = NULL;
-    }
+    free(pi->driverPrivate);
+    pi->driverPrivate = NULL;
 }
 
 

@@ -74,28 +74,20 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include <AvailabilityMacros.h>
 
-static int DRIScreenPrivKeyIndex;
-static DevPrivateKey DRIScreenPrivKey = &DRIScreenPrivKeyIndex;
-static int DRIWindowPrivKeyIndex;
-static DevPrivateKey DRIWindowPrivKey = &DRIWindowPrivKeyIndex;
-static int DRIPixmapPrivKeyIndex;
-static DevPrivateKey DRIPixmapPrivKey = &DRIPixmapPrivKeyIndex;
-static int DRIPixmapBufferPrivKeyIndex;
-static DevPrivateKey DRIPixmapBufferPrivKey = &DRIPixmapBufferPrivKeyIndex;
+static DevPrivateKeyRec DRIScreenPrivKeyRec;
+#define DRIScreenPrivKey (&DRIScreenPrivKeyRec)
+static DevPrivateKeyRec DRIWindowPrivKeyRec;
+#define DRIWindowPrivKey (&DRIWindowPrivKeyRec)
+static DevPrivateKeyRec DRIPixmapPrivKeyRec;
+#define DRIPixmapPrivKey (&DRIPixmapPrivKeyRec)
+static DevPrivateKeyRec DRIPixmapBufferPrivKeyRec;
+#define DRIPixmapBufferPrivKey (&DRIPixmapBufferPrivKeyRec)
 
 static RESTYPE DRIDrawablePrivResType;
 
 static x_hash_table *surface_hash;      /* maps surface ids -> drawablePrivs */
 
 static Bool DRIFreePixmapImp(DrawablePtr pDrawable);
-
-/* FIXME: don't hardcode this? */
-#define CG_INFO_FILE "/System/Library/Frameworks/ApplicationServices.framework/Frameworks/CoreGraphics.framework/Resources/Info-macos.plist"
-
-/* Corresponds to SU Jaguar Green */
-#define CG_REQUIRED_MAJOR 1
-#define CG_REQUIRED_MINOR 157
-#define CG_REQUIRED_MICRO 11
 
 typedef struct {
     DrawablePtr pDrawable;
@@ -109,103 +101,22 @@ typedef struct {
     void *buffer;       
 } DRIPixmapBuffer, *DRIPixmapBufferPtr;
 
-/* Returns version as major.minor.micro in 10.10.10 fixed form */
-static unsigned int
-get_cg_version (void)
-{
-    static unsigned int version;
-
-    FILE *fh;
-    char *ptr;
-
-    if (version != 0)
-        return version;
-
-    /* I tried CFBundleGetVersion, but it returns zero, so.. */
-
-    fh = fopen (CG_INFO_FILE, "r");
-    if (fh != NULL)
-    {
-        char buf[256];
-
-        while (fgets (buf, sizeof (buf), fh) != NULL)
-        {
-            unsigned char c;
-
-            if (!strstr (buf, "<key>CFBundleShortVersionString</key>")
-                || fgets (buf, sizeof (buf), fh) == NULL)
-            {
-                continue;
-            }
-
-            ptr = strstr (buf, "<string>");
-            if (ptr == NULL)
-                continue;
-
-            ptr += strlen ("<string>");
-
-            /* Now PTR points to "MAJOR.MINOR.MICRO". */
-
-            version = 0;
-
-        again:
-            switch ((c = *ptr++))
-            {
-            case '.':
-                version = version * 1024;
-                goto again;
-
-            case '0': case '1': case '2': case '3': case '4':
-            case '5': case '6': case '7': case '8': case '9':
-                version = ((version & ~0x3ff)
-                          + (version & 0x3ff) * 10 + (c - '0'));
-                goto again;
-            }
-            break;
-        }
-
-        fclose (fh);
-    }
-
-    return version;
-}
-
-static Bool
-test_cg_version (unsigned int major, unsigned int minor, unsigned int micro)
-{
-    unsigned int cg_ver = get_cg_version ();
-
-    unsigned int cg_major = (cg_ver >> 20) & 0x3ff;
-    unsigned int cg_minor = (cg_ver >> 10) & 0x3ff;
-    unsigned int cg_micro =  cg_ver        & 0x3ff;
-
-    if (cg_major > major)
-        return TRUE;
-    else if (cg_major < major)
-        return FALSE;
-
-    /* cg_major == major */
-
-    if (cg_minor > minor)
-        return TRUE;
-    else if (cg_minor < minor)
-        return FALSE;
-
-    /* cg_minor == minor */
-
-    if (cg_micro < micro)
-        return FALSE;
-
-    return TRUE;
-}
-
 Bool
 DRIScreenInit(ScreenPtr pScreen)
 {
     DRIScreenPrivPtr    pDRIPriv;
     int                 i;
 
-    pDRIPriv = (DRIScreenPrivPtr) xcalloc(1, sizeof(DRIScreenPrivRec));
+    if (!dixRegisterPrivateKey(&DRIScreenPrivKeyRec, PRIVATE_SCREEN, 0))
+	return FALSE;
+    if (!dixRegisterPrivateKey(&DRIWindowPrivKeyRec, PRIVATE_WINDOW, 0))
+	return FALSE;
+    if (!dixRegisterPrivateKey(&DRIPixmapPrivKeyRec, PRIVATE_PIXMAP, 0))
+	return FALSE;
+    if (!dixRegisterPrivateKey(&DRIPixmapBufferPrivKeyRec, PRIVATE_PIXMAP, 0))
+	return FALSE;
+
+    pDRIPriv = (DRIScreenPrivPtr) calloc(1, sizeof(DRIScreenPrivRec));
     if (!pDRIPriv) {
 	dixSetPrivate(&pScreen->devPrivates, DRIScreenPrivKey, NULL);
         return FALSE;
@@ -214,20 +125,6 @@ DRIScreenInit(ScreenPtr pScreen)
     dixSetPrivate(&pScreen->devPrivates, DRIScreenPrivKey, pDRIPriv);
     pDRIPriv->directRenderingSupport = TRUE;
     pDRIPriv->nrWindows = 0;
-
-    /* Need recent cg for window access update */
-    if (!test_cg_version (CG_REQUIRED_MAJOR,
-                          CG_REQUIRED_MINOR,
-                          CG_REQUIRED_MICRO))
-    {
-        ErrorF ("[DRI] disabled direct rendering; requires CoreGraphics %d.%d.%d\n",
-                CG_REQUIRED_MAJOR, CG_REQUIRED_MINOR, CG_REQUIRED_MICRO);
-
-        pDRIPriv->directRenderingSupport = FALSE;
-
-        /* Note we don't nuke the dri private, since we need it for
-           managing indirect surfaces. */
-    }
 
     /* Initialize drawable tables */
     for (i = 0; i < DRI_MAX_DRAWABLES; i++) {
@@ -269,7 +166,7 @@ DRICloseScreen(ScreenPtr pScreen)
     DRIScreenPrivPtr pDRIPriv = DRI_SCREEN_PRIV(pScreen);
 
     if (pDRIPriv && pDRIPriv->directRenderingSupport) {
-        xfree(pDRIPriv);
+        free(pDRIPriv);
 	dixSetPrivate(&pScreen->devPrivates, DRIScreenPrivKey, NULL);
     }
 }
@@ -277,9 +174,10 @@ DRICloseScreen(ScreenPtr pScreen)
 Bool
 DRIExtensionInit(void)
 {
-    DRIDrawablePrivResType = CreateNewResourceType(DRIDrawablePrivDelete);
+    DRIDrawablePrivResType = CreateNewResourceType(DRIDrawablePrivDelete,
+						   "DRIDrawable");
 
-    return TRUE;
+    return DRIDrawablePrivResType != 0;
 }
 
 void
@@ -346,8 +244,8 @@ DRIUpdateSurface(DRIDrawablePrivPtr pDRIDrawablePriv, DrawablePtr pDraw)
         wc.height = pWin->drawable.height + 2 * pWin->borderWidth;
         wc.bit_gravity = XP_GRAVITY_NONE;
 
-        wc.shape_nrects = REGION_NUM_RECTS(&pWin->clipList);
-        wc.shape_rects = REGION_RECTS(&pWin->clipList);
+        wc.shape_nrects = RegionNumRects(&pWin->clipList);
+        wc.shape_rects = RegionRects(&pWin->clipList);
         wc.shape_tx = - (pTopWin->drawable.x - pTopWin->borderWidth);
         wc.shape_ty = - (pTopWin->drawable.y - pTopWin->borderWidth);
 
@@ -380,7 +278,7 @@ CreateSurfaceForWindow(ScreenPtr pScreen, WindowPtr pWin, xp_window_id *widPtr) 
 	xp_window_changes wc;
 	
 	/* allocate a DRI Window Private record */
-	if (!(pDRIDrawablePriv = xalloc(sizeof(*pDRIDrawablePriv)))) {
+	if (!(pDRIDrawablePriv = malloc(sizeof(*pDRIDrawablePriv)))) {
 	    return NULL;
 	}
 	
@@ -394,7 +292,7 @@ CreateSurfaceForWindow(ScreenPtr pScreen, WindowPtr pWin, xp_window_id *widPtr) 
 	wid = x_cvt_vptr_to_uint(RootlessFrameForWindow(pWin, TRUE));
 
 	if (wid == 0) {
-	    xfree(pDRIDrawablePriv);
+	    free(pDRIDrawablePriv);
 	    return NULL;
 	}
 	
@@ -402,7 +300,7 @@ CreateSurfaceForWindow(ScreenPtr pScreen, WindowPtr pWin, xp_window_id *widPtr) 
 	err = xp_create_surface(wid, &pDRIDrawablePriv->sid);
 
 	if (err != Success) {
-	    xfree(pDRIDrawablePriv);
+	    free(pDRIDrawablePriv);
 	    return NULL;
 	}
 
@@ -413,7 +311,7 @@ CreateSurfaceForWindow(ScreenPtr pScreen, WindowPtr pWin, xp_window_id *widPtr) 
 
 	if (err != Success) {
 	    xp_destroy_surface(pDRIDrawablePriv->sid);
-	    xfree(pDRIDrawablePriv);
+	    free(pDRIDrawablePriv);
 	    return NULL;
 	}
 
@@ -438,7 +336,7 @@ CreateSurfaceForPixmap(ScreenPtr pScreen, PixmapPtr pPix) {
 	xp_error err;
 
 	/* allocate a DRI Window Private record */
-	if (!(pDRIDrawablePriv = xcalloc(1, sizeof(*pDRIDrawablePriv)))) {
+	if (!(pDRIDrawablePriv = calloc(1, sizeof(*pDRIDrawablePriv)))) {
 	    return NULL;
 	}
 	
@@ -453,7 +351,7 @@ CreateSurfaceForPixmap(ScreenPtr pScreen, PixmapPtr pPix) {
 	
 	err = xp_create_surface(0, &pDRIDrawablePriv->sid);
 	if (err != Success) {
-	    xfree(pDRIDrawablePriv);
+	    free(pDRIDrawablePriv);
 	    return NULL;
 	}
 
@@ -518,7 +416,7 @@ DRICreateSurface(ScreenPtr pScreen, Drawable id,
                                     client_id, key);
             if (err != Success) {
                 xp_destroy_surface(pDRIDrawablePriv->sid);
-                xfree(pDRIDrawablePriv);
+                free(pDRIDrawablePriv);
 		
 		/* 
 		 * Now set the dix privates to NULL that were previously set.
@@ -636,7 +534,7 @@ DRIDrawablePrivDelete(pointer pResource, XID id)
     if (pDRIDrawablePriv->notifiers != NULL)
         x_hook_free(pDRIDrawablePriv->notifiers);
 
-    xfree(pDRIDrawablePriv);
+    free(pDRIDrawablePriv);
 
     if (pDrawable->type == DRAWABLE_WINDOW) {
 	dixSetPrivate(&pWin->devPrivates, DRIWindowPrivKey, NULL);
@@ -827,7 +725,7 @@ Bool DRICreatePixmap(ScreenPtr pScreen, Drawable id,
 
     pPix = (PixmapPtr)pDrawable;
 
-    shared = xalloc(sizeof(*shared));
+    shared = malloc(sizeof(*shared));
     if(NULL == shared) {
         FatalError("failed to allocate DRIPixmapBuffer in %s\n", __func__);
     }
@@ -855,7 +753,7 @@ Bool DRICreatePixmap(ScreenPtr pScreen, Drawable id,
                           S_IRUSR | S_IWUSR | S_IROTH | S_IWOTH);
     
     if(-1 == shared->fd) {
-	xfree(shared);
+	free(shared);
         return FALSE;
     }   
     
@@ -865,7 +763,7 @@ Bool DRICreatePixmap(ScreenPtr pScreen, Drawable id,
 	ErrorF("failed to ftruncate (extend) file.");
 	shm_unlink(shared->shmPath);
 	close(shared->fd);
-	xfree(shared);
+	free(shared);
 	return FALSE;
     }
 
@@ -877,7 +775,7 @@ Bool DRICreatePixmap(ScreenPtr pScreen, Drawable id,
 	ErrorF("failed to mmap shared memory.");
 	shm_unlink(shared->shmPath);
 	close(shared->fd);
-	xfree(shared);
+	free(shared);
 	return FALSE;
     }
     
@@ -937,7 +835,7 @@ DRIFreePixmapImp(DrawablePtr pDrawable) {
     close(shared->fd);
     munmap(shared->buffer, shared->length);
     shm_unlink(shared->shmPath);
-    xfree(shared);
+    free(shared);
 
     dixSetPrivate(&pPix->devPrivates, DRIPixmapBufferPrivKey, (pointer)NULL);
 

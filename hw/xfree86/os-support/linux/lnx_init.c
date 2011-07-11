@@ -35,7 +35,6 @@
 #include "xf86.h"
 #include "xf86Priv.h"
 #include "xf86_OSlib.h"
-#include "lnx.h"
 
 #include <sys/stat.h>
 
@@ -230,9 +229,6 @@ xf86OpenConsole(void)
         {
             struct termios nTty;
 
-#if defined(DO_OS_FONTRESTORE)
-	    lnx_savefont();
-#endif
 	    /*
 	     * now get the VT.  This _must_ succeed, or else fail completely.
 	     */
@@ -281,8 +277,9 @@ xf86OpenConsole(void)
             tcsetattr(xf86Info.consoleFd, TCSANOW, &nTty);
 
             /* need to keep the buffer clean, else the kernel gets angry */
-            console_handler = xf86AddGeneralHandler(xf86Info.consoleFd,
-                    drain_console, NULL);
+	    if (xf86Info.allowEmptyInput)
+		console_handler = xf86AddGeneralHandler(xf86Info.consoleFd,
+							drain_console, NULL);
 
 	    /* we really should have a InitOSInputDevices() function instead
 	     * of Init?$#*&Device(). So I just place it here */
@@ -302,17 +299,12 @@ xf86OpenConsole(void)
 		        strerror(errno));
         }
     }
-    return;
 }
 
 void
 xf86CloseConsole(void)
 {
     struct vt_mode   VT;
-#if defined(DO_OS_FONTRESTORE)
-    struct vt_stat vts;
-    int vtno = -1;
-#endif
 
     if (ShareVTs) {
         close(xf86Info.consoleFd);
@@ -323,14 +315,6 @@ xf86CloseConsole(void)
 	xf86RemoveGeneralHandler(console_handler);
 	console_handler = NULL;
     };
-
-#if defined(DO_OS_FONTRESTORE)
-    if (ioctl(xf86Info.consoleFd, VT_GETSTATE, &vts) < 0)
-	xf86Msg(X_WARNING, "xf86CloseConsole: VT_GETSTATE failed: %s\n",
-		strerror(errno));
-    else
-	vtno = vts.v_active;
-#endif
 
     /* Back to text mode ... */
     if (ioctl(xf86Info.consoleFd, KDSETMODE, KD_TEXT) < 0)
@@ -366,18 +350,10 @@ xf86CloseConsole(void)
 			strerror(errno));
 	    activeVT = -1;
         }
-
-#if defined(DO_OS_FONTRESTORE)
-        if (xf86Info.vtno == vtno)	/* check if we are active */
-	    lnx_restorefont();
-        lnx_freefontdata();
-#endif
     }
     close(xf86Info.consoleFd);	/* make the vt-manager happy */
 
     restoreVtPerms();		/* restore the permissions */
-
-    return;
 }
 
 int
@@ -390,17 +366,17 @@ xf86ProcessArgument(int argc, char *argv[], int i)
 	if (!strcmp(argv[i], "-keeptty"))
 	{
 		KeepTty = TRUE;
-		return(1);
+		return 1;
 	}
         if (!strcmp(argv[i], "-novtswitch"))
         {
                 VTSwitch = FALSE;
-                return(1);
+                return 1;
         }
         if (!strcmp(argv[i], "-sharevts"))
         {
                 ShareVTs = TRUE;
-                return(1);
+                return 1;
         }
 	if ((argv[i][0] == 'v') && (argv[i][1] == 't'))
 	{
@@ -408,11 +384,11 @@ xf86ProcessArgument(int argc, char *argv[], int i)
 		{
 			UseMsg();
 			VTnum = -1;
-			return(0);
+			return 0;
 		}
-		return(1);
+		return 1;
 	}
-	return(0);
+	return 0;
 }
 
 void
@@ -421,7 +397,6 @@ xf86UseMsg(void)
 	ErrorF("vtXX                   use the specified VT number\n");
 	ErrorF("-keeptty               ");
 	ErrorF("don't detach controlling tty (for debugging only)\n");
-        ErrorF("-novtswitch            don't immediately switch to new VT\n");
-        ErrorF("-sharevts              share VTs with another X server\n");
-	return;
+	ErrorF("-novtswitch            don't immediately switch to new VT\n");
+	ErrorF("-sharevts              share VTs with another X server\n");
 }

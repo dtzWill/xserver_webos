@@ -73,7 +73,6 @@ static void set_x11_path(void) {
 #if MAC_OS_X_VERSION_MIN_REQUIRED >= 1050
 
     CFURLRef appURL = NULL;
-    CFBundleRef bundle = NULL;
     OSStatus osstatus = LSFindApplicationForInfo(kLSUnknownCreator, CFSTR(kX11AppBundleId), nil, nil, &appURL);
 
     switch (osstatus) {
@@ -82,12 +81,6 @@ static void set_x11_path(void) {
                 fprintf(stderr, "Xquartz: Invalid response from LSFindApplicationForInfo(%s)\n", 
                         kX11AppBundleId);
                 exit(1);
-            }
-
-            bundle = CFBundleCreate(NULL, appURL);
-            if(!bundle) {
-                fprintf(stderr, "Xquartz: Null value returned from CFBundleCreate().\n");
-                exit(2);                
             }
 
             if (!CFURLGetFileSystemRepresentation(appURL, true, (unsigned char *)x11_path, sizeof(x11_path))) {
@@ -233,6 +226,8 @@ int main(int argc, char **argv, char **envp) {
     kr = bootstrap_look_up(bootstrap_port, server_bootstrap_name, &mp);
     if(kr != KERN_SUCCESS) {
         pid_t child;
+
+        fprintf(stderr, "Xquartz: Unable to locate waiting server: %s\n", server_bootstrap_name);
         set_x11_path();
 
         /* This forking is ugly and will be cleaned up later */
@@ -305,12 +300,12 @@ int main(int argc, char **argv, char **envp) {
     /* We have fixed-size string lengths due to limitations in IPC,
      * so we need to copy our argv and envp.
      */
-    newargv = (string_array_t)alloca(argc * sizeof(string_t));
-    newenvp = (string_array_t)alloca(envpc * sizeof(string_t));
-    
+    newargv = (string_array_t)malloc(argc * sizeof(string_t));
+    newenvp = (string_array_t)malloc(envpc * sizeof(string_t));
+
     if(!newargv || !newenvp) {
         fprintf(stderr, "Xquartz: Memory allocation failure\n");
-        exit(EXIT_FAILURE);
+        return EXIT_FAILURE;
     }
     
     for(i=0; i < argc; i++) {
@@ -321,6 +316,10 @@ int main(int argc, char **argv, char **envp) {
     }
 
     kr = start_x11_server(mp, newargv, argc, newenvp, envpc);
+
+    free(newargv);
+    free(newenvp);
+
     if (kr != KERN_SUCCESS) {
         fprintf(stderr, "Xquartz: start_x11_server: %s\n", mach_error_string(kr));
         return EXIT_FAILURE;

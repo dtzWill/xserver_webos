@@ -91,7 +91,7 @@ typedef struct {
 						   input device events */
     Pix24Flags		pixmap24;
     MessageType		pix24From;
-#ifdef __i386__
+#ifdef SUPPORT_PC98
     Bool		pc98;
 #endif
     Bool		pmFlag;
@@ -146,9 +146,6 @@ typedef struct _RootWinProp {
     long			size;
     pointer			data;
 } RootWinProp, *RootWinPropPtr;
-
-/* private resource types */
-#define ResNoAvoid  ResBios
 
 /* ISC's cc can't handle ~ of UL constants, so explicitly type cast them. */
 #define XLED1   ((unsigned long) 0x00000001)

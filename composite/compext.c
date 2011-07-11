@@ -2,29 +2,23 @@
  * Copyright © 2006 Sun Microsystems, Inc.  All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the
- * "Software"), to deal in the Software without restriction, including
- * without limitation the rights to use, copy, modify, merge, publish,
- * distribute, and/or sell copies of the Software, and to permit persons
- * to whom the Software is furnished to do so, provided that the above
- * copyright notice(s) and this permission notice appear in all copies of
- * the Software and that both the above copyright notice(s) and this
- * permission notice appear in supporting documentation.
+ * copy of this software and associated documentation files (the "Software"),
+ * to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
+ * and/or sell copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following conditions:
  *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
- * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT
- * OF THIRD PARTY RIGHTS. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
- * HOLDERS INCLUDED IN THIS NOTICE BE LIABLE FOR ANY CLAIM, OR ANY SPECIAL
- * INDIRECT OR CONSEQUENTIAL DAMAGES, OR ANY DAMAGES WHATSOEVER RESULTING
- * FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT,
- * NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION
- * WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ * The above copyright notice and this permission notice (including the next
+ * paragraph) shall be included in all copies or substantial portions of the
+ * Software.
  *
- * Except as contained in this notice, the name of a copyright holder
- * shall not be used in advertising or otherwise to promote the sale, use
- * or other dealings in this Software without prior written authorization
- * of the copyright holder.
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+ * DEALINGS IN THE SOFTWARE.
  *
  * Copyright © 2003 Keith Packard
  *
@@ -56,8 +50,8 @@
 #include "protocol-versions.h"
 
 static CARD8	CompositeReqCode;
-static int CompositeClientPrivateKeyIndex;
-static DevPrivateKey CompositeClientPrivateKey = &CompositeClientPrivateKeyIndex;
+static DevPrivateKeyRec CompositeClientPrivateKeyRec;
+#define CompositeClientPrivateKey (&CompositeClientPrivateKeyRec)
 RESTYPE		CompositeClientWindowType;
 RESTYPE		CompositeClientSubwindowsType;
 RESTYPE		CompositeClientOverlayType;
@@ -138,7 +132,7 @@ ProcCompositeQueryVersion (ClientPtr client)
 	swapl(&rep.minorVersion, n);
     }
     WriteToClient(client, sizeof(xCompositeQueryVersionReply), (char *)&rep);
-    return(client->noClientException);
+    return Success;
 }
 
 #define VERIFY_WINDOW(pWindow, wid, client, mode)			\
@@ -146,10 +140,7 @@ ProcCompositeQueryVersion (ClientPtr client)
 	int err;							\
 	err = dixLookupResourceByType((pointer *) &pWindow, wid,	\
 				      RT_WINDOW, client, mode);		\
-	if (err == BadValue) {						\
-	    client->errorValue = wid;					\
-	    return BadWindow;						\
-	} else if (err != Success) {					\
+	if (err != Success) {						\
 	    client->errorValue = wid;					\
 	    return err;							\
 	}								\
@@ -227,12 +218,12 @@ ProcCompositeCreateRegionFromBorderClip (ClientPtr client)
     pRegion = XFixesRegionCopy (pBorderClip);
     if (!pRegion)
 	return BadAlloc;
-    REGION_TRANSLATE (pScreen, pRegion, -pWin->drawable.x, -pWin->drawable.y);
+    RegionTranslate(pRegion, -pWin->drawable.x, -pWin->drawable.y);
     
     if (!AddResource (stuff->region, RegionResType, (pointer) pRegion))
 	return BadAlloc;
 
-    return(client->noClientException);
+    return Success;
 }
 
 static int
@@ -271,7 +262,7 @@ ProcCompositeNameWindowPixmap (ClientPtr client)
     if (!AddResource (stuff->pixmap, RT_PIXMAP, (pointer) pPixmap))
 	return BadAlloc;
 
-    return(client->noClientException);
+    return Success;
 }
 
 
@@ -331,7 +322,7 @@ ProcCompositeGetOverlayWindow (ClientPtr client)
     }
     (void) WriteToClient(client, sz_xCompositeGetOverlayWindowReply, (char *)&rep);
 
-    return client->noClientException;
+    return Success;
 }
 
 static int
@@ -357,7 +348,7 @@ ProcCompositeReleaseOverlayWindow (ClientPtr client)
     /* The delete function will free the client structure */
     FreeResource (pOc->resource, RT_NONE);
 
-    return client->noClientException;
+    return Success;
 }
 
 static int (*ProcCompositeVector[CompositeNumberRequests])(ClientPtr) = {
@@ -552,20 +543,23 @@ CompositeExtensionInit (void)
 	return;
 #endif
 
-    CompositeClientWindowType = CreateNewResourceType (FreeCompositeClientWindow);
+    CompositeClientWindowType = CreateNewResourceType
+	(FreeCompositeClientWindow, "CompositeClientWindow");
     if (!CompositeClientWindowType)
 	return;
 
-    CompositeClientSubwindowsType = CreateNewResourceType (FreeCompositeClientSubwindows);
+    CompositeClientSubwindowsType = CreateNewResourceType
+	(FreeCompositeClientSubwindows, "CompositeClientSubwindows");
     if (!CompositeClientSubwindowsType)
 	return;
 
-    CompositeClientOverlayType = CreateNewResourceType (FreeCompositeClientOverlay);
+    CompositeClientOverlayType = CreateNewResourceType
+	(FreeCompositeClientOverlay, "CompositeClientOverlay");
     if (!CompositeClientOverlayType)
 	return;
 
-    if (!dixRequestPrivate(CompositeClientPrivateKey,
-			   sizeof(CompositeClientRec)))
+    if (!dixRegisterPrivateKey(&CompositeClientPrivateKeyRec, PRIVATE_CLIENT,
+			       sizeof(CompositeClientRec)))
 	return;
 
     if (!AddCallback (&ClientStateCallback, CompositeClientCallback, 0))

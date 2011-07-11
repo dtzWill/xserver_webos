@@ -14,8 +14,8 @@
  * CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#ifdef HAVE_XORG_CONFIG_H
-#include <xorg-config.h>
+#ifdef HAVE_DIX_CONFIG_H
+#include <dix-config.h>
 #endif
 
 #include <sys/types.h>
@@ -50,5 +50,5 @@ strlcpy(char *dst, const char *src, size_t siz)
 			;
 	}
 
-	return(s - src - 1);	/* count does not include NUL */
+	return s - src - 1;	/* count does not include NUL */
 }

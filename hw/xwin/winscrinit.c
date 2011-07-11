@@ -196,7 +196,7 @@ winScreenInit (int index,
 
       /* 
        * In this case, some of the defaults set in
-       * winInitializeDefaultScreens () are not correct ...
+       * winInitializeScreenDefaults() are not correct ...
        */
       if (!pScreenInfo->fUserGaveHeightAndWidth)
 	{
@@ -238,6 +238,16 @@ winScreenInit (int index,
     winInitCursor(pScreen);
   else
     winErrorFVerb(2, "winScreenInit - Using software cursor\n");  
+
+  /*
+     Note the screen origin in a normalized coordinate space where (0,0) is at the top left
+     of the native virtual desktop area
+  */
+  pScreen->x = pScreenInfo->dwInitialX - GetSystemMetrics(SM_XVIRTUALSCREEN);
+  pScreen->y = pScreenInfo->dwInitialY - GetSystemMetrics(SM_YVIRTUALSCREEN);
+
+  ErrorF("Screen %d added at virtual desktop coordinate (%d,%d).\n",
+         index, pScreen->x, pScreen->y);
 
 #if CYGDEBUG || YES
   winDebug ("winScreenInit - returning\n");
@@ -380,14 +390,12 @@ winFinishScreenInitFB (int index,
   pScreen->blockData = pScreen;
   pScreen->wakeupData = pScreen;
 
-#ifdef RENDER
   /* Render extension initialization, calls miPictureInit */
   if (!fbPictureInit (pScreen, NULL, 0))
     {
       ErrorF ("winFinishScreenInitFB - fbPictureInit () failed\n");
       return FALSE;
     }
-#endif
 
 #ifdef RANDR
   /* Initialize resize and rotate support */

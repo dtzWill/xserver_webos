@@ -9,11 +9,15 @@ Xsdl_SOURCES = sdl.c
 
 Xsdl_LDADD = \
 	@KDRIVE_LIBS@                                  \
-	@XSDL_LIBS@
+	@XSDL_LIBS@                                    \
+	-lGLESv2 -lpdl
 
 Xsdl_DEPENDENCIES = @KDRIVE_LOCAL_LIBS@
 
-Xsdl_LDFLAGS = $(LD_EXPORT_SYMBOLS_FLAG)
+Xsdl_LDFLAGS = $(LD_EXPORT_SYMBOLS_FLAG) \
+	-Wl,-rpath=/usr/local/lib              \
+	-Wl,--allow-shlib-undefined
+
 
 relink:
 	rm -f $(bin_PROGRAMS) && make $(bin_PROGRAMS)

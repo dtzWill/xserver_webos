@@ -52,6 +52,7 @@ SOFTWARE.
 #include "screenint.h"
 #include <X11/Xmd.h>
 #include <X11/Xproto.h>
+#include <stdint.h>
 #include "window.h"     /* for WindowPtr */
 #include "xkbrules.h"
 #include "events.h"
@@ -210,14 +211,36 @@ typedef struct _InputOption {
     struct _InputOption *next;
 } InputOption;
 
-/* Key has been run through all input processing and events sent to clients. */
+typedef struct _InputAttributes {
+    char                *product;
+    char                *vendor;
+    char                *device;
+    char                *pnp_id;
+    char                *usb_id;
+    char                **tags; /* null-terminated */
+    uint32_t            flags;
+} InputAttributes;
+
+#define ATTR_KEYBOARD (1<<0)
+#define ATTR_POINTER (1<<1)
+#define ATTR_JOYSTICK (1<<2)
+#define ATTR_TABLET (1<<3)
+#define ATTR_TOUCHPAD (1<<4)
+#define ATTR_TOUCHSCREEN (1<<5)
+
+/* Key/Button has been run through all input processing and events sent to clients. */
 #define KEY_PROCESSED 1
-/* Key has not been fully processed, no events have been sent. */
+#define BUTTON_PROCESSED 1
+/* Key/Button has not been fully processed, no events have been sent. */
 #define KEY_POSTED 2
+#define BUTTON_POSTED 2
 
 extern void set_key_down(DeviceIntPtr pDev, int key_code, int type);
 extern void set_key_up(DeviceIntPtr pDev, int key_code, int type);
 extern int key_is_down(DeviceIntPtr pDev, int key_code, int type);
+extern void set_button_down(DeviceIntPtr pDev, int button, int type);
+extern void set_button_up(DeviceIntPtr pDev, int button, int type);
+extern int button_is_down(DeviceIntPtr pDev, int button, int type);
 
 extern void InitCoreDevices(void);
 extern void InitXTestDevices(void);
@@ -404,6 +427,7 @@ extern _X_EXPORT void ProcessInputEvents(void);
 extern _X_EXPORT void InitInput(
     int  /*argc*/,
     char ** /*argv*/);
+extern _X_EXPORT void CloseInput(void);
 
 extern _X_EXPORT int GetMaximumEventsNum(void);
 
@@ -415,7 +439,13 @@ extern void CreateClassesChangedEvent(EventListPtr event,
                                       DeviceIntPtr master,
                                       DeviceIntPtr slave,
                                       int type);
-extern int GetPointerEvents(
+extern EventListPtr UpdateFromMaster(
+    EventListPtr events,
+    DeviceIntPtr pDev,
+    int type,
+    int *num_events);
+
+extern _X_EXPORT int GetPointerEvents(
     EventListPtr events,
     DeviceIntPtr pDev,
     int type,
@@ -425,7 +455,7 @@ extern int GetPointerEvents(
     int num_valuators,
     int *valuators);
 
-extern int GetKeyboardEvents(
+extern _X_EXPORT int GetKeyboardEvents(
     EventListPtr events,
     DeviceIntPtr pDev,
     int type,
@@ -476,7 +506,7 @@ extern int AttachDevice(ClientPtr client,
 extern _X_EXPORT DeviceIntPtr GetPairedDevice(DeviceIntPtr kbd);
 extern DeviceIntPtr GetMaster(DeviceIntPtr dev, int type);
 
-extern int AllocDevicePair(ClientPtr client,
+extern _X_EXPORT int AllocDevicePair(ClientPtr client,
                              char* name,
                              DeviceIntPtr* ptr,
                              DeviceIntPtr* keybd,
@@ -488,7 +518,7 @@ extern void DeepCopyDeviceClasses(DeviceIntPtr from,
                                   DeviceChangedEvent *dce);
 
 /* Helper functions. */
-extern int generate_modkeymap(ClientPtr client, DeviceIntPtr dev,
+extern _X_EXPORT int generate_modkeymap(ClientPtr client, DeviceIntPtr dev,
                               KeyCode **modkeymap, int *max_keys_per_mod);
 extern int change_modmap(ClientPtr client, DeviceIntPtr dev, KeyCode *map,
                          int max_keys_per_mod);
@@ -501,6 +531,8 @@ extern int AllocXTestDevice(ClientPtr client,
 extern BOOL IsXTestDevice(DeviceIntPtr dev, DeviceIntPtr master);
 extern DeviceIntPtr GetXTestDevice(DeviceIntPtr master);
 extern void SendDevicePresenceEvent(int deviceid, int type);
+extern _X_EXPORT InputAttributes *DuplicateInputAttributes(InputAttributes *attrs);
+extern _X_EXPORT void FreeInputAttributes(InputAttributes *attrs);
 
 /* misc event helpers */
 extern Mask GetEventFilter(DeviceIntPtr dev, xEvent *event);
@@ -514,6 +546,7 @@ void FixUpEventFromWindow(DeviceIntPtr pDev,
 /* Implemented by the DDX. */
 extern _X_EXPORT int NewInputDeviceRequest(
     InputOption *options,
+    InputAttributes *attrs,
     DeviceIntPtr *dev);
 extern  _X_EXPORT void DeleteInputDeviceRequest(
     DeviceIntPtr dev);

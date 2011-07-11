@@ -164,7 +164,7 @@ winMWExtWMUpdateIcon (Window id)
   WindowPtr		pWin;
   HICON			hIcon, hiconOld;
 
-  pWin = (WindowPtr) LookupIDByType (id, RT_WINDOW);
+  dixLookupResourceByType((pointer) &pWin, id, RT_WINDOW, NullClient, DixUnknownAccess);
   hIcon = winOverrideIcon ((unsigned long)pWin);
 
   if (!hIcon)
@@ -407,7 +407,7 @@ void
 winMWExtWMRestackWindows (ScreenPtr pScreen)
 {
   winScreenPriv(pScreen);
-  WindowPtr pRoot = WindowTable[pScreen->myNum];
+  WindowPtr pRoot = pScreen->root;
   WindowPtr pWin = NULL;
   WindowPtr pWinPrev = NULL;
   win32RootlessWindowPtr pRLWin = NULL;

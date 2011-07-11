@@ -71,11 +71,9 @@ void X11ApplicationSetFrontProcess (void);
 void X11ApplicationSetCanQuit (int state);
 void X11ApplicationServerReady (void);
 void X11ApplicationShowHideMenubar (int state);
+void X11ApplicationLaunchClient (const char *cmd);
 
 void X11ApplicationMain(int argc, char **argv, char **envp);
-
-extern int X11EnableKeyEquivalents;
-extern int quartzHasRoot, quartzEnableRootless, quartzFullscreenMenu;
 
 #define PREFS_APPSMENU              "apps_menu"
 #define PREFS_FAKEBUTTONS           "enable_fake_buttons"
@@ -89,6 +87,7 @@ extern int quartzHasRoot, quartzEnableRootless, quartzFullscreenMenu;
 #define PREFS_NO_TCP                "nolisten_tcp"
 #define PREFS_DONE_XINIT_CHECK      "done_xinit_check"
 #define PREFS_NO_QUIT_ALERT         "no_quit_alert"
+#define PREFS_OPTION_SENDS_ALT      "option_sends_alt"
 #define PREFS_FAKE_BUTTON2          "fake_button2"
 #define PREFS_FAKE_BUTTON3          "fake_button3"
 #define PREFS_APPKIT_MODIFIERS      "appkit_modifiers"

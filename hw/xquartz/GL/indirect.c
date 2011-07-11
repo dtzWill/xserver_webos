@@ -42,6 +42,8 @@
 #define GL_GLEXT_WUNDEF_SUPPORT
 
 #include <OpenGL/OpenGL.h>
+#include <OpenGL/gl.h>
+#include <OpenGL/glext.h>
 #include <OpenGL/CGLContext.h>
 
 /* These next few GL_EXT pre-processing blocks are to explicitly define 
@@ -120,7 +122,7 @@
 /* Tiger PPC doesn't have the associated symbols, but glext.h says it does.  Liars!
  * http://trac.macports.org/ticket/20638
  */
-#if defined(__ppc__) && MAC_OS_X_VERSION_MIN_REQUIRED == 1040
+#if defined(__ppc__) && MAC_OS_X_VERSION_MIN_REQUIRED < 1050
 #undef GL_EXT_gpu_program_parameters
 #define GL_EXT_gpu_program_parameters 0
 #endif
@@ -167,7 +169,7 @@ void warn_func(void * p1, char *format, ...);
 
 // some prototypes
 static __GLXscreen * __glXAquaScreenProbe(ScreenPtr pScreen);
-static __GLXdrawable * __glXAquaScreenCreateDrawable(__GLXscreen *screen, DrawablePtr pDraw, int type, XID drawId, __GLXconfig *conf);
+static __GLXdrawable * __glXAquaScreenCreateDrawable(ClientPtr client, __GLXscreen *screen, DrawablePtr pDraw, XID drawId, int type, XID glxDrawId, __GLXconfig *conf);
 
 static void __glXAquaContextDestroy(__GLXcontext *baseContext);
 static int __glXAquaContextMakeCurrent(__GLXcontext *baseContext);
@@ -220,7 +222,7 @@ __glXAquaScreenCreateContext(__GLXscreen *screen,
   
     GLAQUA_DEBUG_MSG("glXAquaScreenCreateContext\n");
     
-    context = xcalloc(1, sizeof (__GLXAquaContext));
+    context = calloc(1, sizeof (__GLXAquaContext));
     
     if (context == NULL)
 	return NULL;
@@ -239,7 +241,7 @@ __glXAquaScreenCreateContext(__GLXscreen *screen,
     context->pixelFormat = makeFormat(conf);
     
     if (!context->pixelFormat) {
-        xfree(context);
+        free(context);
         return NULL;
     }
 
@@ -251,7 +253,7 @@ __glXAquaScreenCreateContext(__GLXscreen *screen,
     if (gl_err != 0) {
 	ErrorF("CGLCreateContext error: %s\n", CGLErrorString(gl_err));
 	CGLDestroyPixelFormat(context->pixelFormat);
-	xfree(context);
+	free(context);
 	return NULL;
     }
     
@@ -269,8 +271,7 @@ static void __glXAquaContextDestroy(__GLXcontext *baseContext) {
 
     __GLXAquaContext *context = (__GLXAquaContext *) baseContext;
     
-    GLAQUA_DEBUG_MSG("glAquaContextDestroy (ctx 0x%x)\n",
-                     (unsigned int) baseContext);
+    GLAQUA_DEBUG_MSG("glAquaContextDestroy (ctx %p)\n", baseContext);
     if (context != NULL) {
       if (context->sid != 0 && surface_hash != NULL) {
 		lst = x_hash_table_lookup(surface_hash, x_cvt_uint_to_vptr(context->sid), NULL);
@@ -284,7 +285,7 @@ static void __glXAquaContextDestroy(__GLXcontext *baseContext) {
       if (context->pixelFormat != NULL)
 	  CGLDestroyPixelFormat(context->pixelFormat);
       
-      xfree(context);
+      free(context);
     }
 }
 
@@ -319,7 +320,7 @@ static void surface_notify(void *_arg, void *data) {
     case AppleDRISurfaceNotifyDestroyed:
         if (surface_hash != NULL)
             x_hash_table_remove(surface_hash, x_cvt_uint_to_vptr(arg->id));
-	draw->base.pDraw = NULL;
+	draw->pDraw = NULL;
 	draw->sid = 0;
         break;
 
@@ -471,7 +472,7 @@ static int __glXAquaContextForceCurrent(__GLXcontext *baseContext)
 }
 
 /* Drawing surface notification callbacks */
-static GLboolean __glXAquaDrawableSwapBuffers(__GLXdrawable *base) {
+static GLboolean __glXAquaDrawableSwapBuffers(ClientPtr client, __GLXdrawable *base) {
     CGLError err;
     __GLXAquaDrawable *drawable;
  
@@ -548,7 +549,7 @@ static CGLPixelFormatObj makeFormat(__GLXconfig *conf) {
        attr[i++] = conf->samples;
     }
      
-    attr[i++] = 0;
+    attr[i] = 0;
 
     error = CGLChoosePixelFormat(attr, &fobj, &formats);
     if(error) {
@@ -564,7 +565,7 @@ static void __glXAquaScreenDestroy(__GLXscreen *screen) {
     GLAQUA_DEBUG_MSG("glXAquaScreenDestroy(%p)\n", screen);
     __glXScreenDestroy(screen);
 
-    xfree(screen);
+    free(screen);
 }
 
 /* This is called by __glXInitScreens(). */
@@ -576,7 +577,7 @@ static __GLXscreen * __glXAquaScreenProbe(ScreenPtr pScreen) {
     if (pScreen == NULL) 
 	return NULL;
 
-    screen = xcalloc(1, sizeof *screen);
+    screen = calloc(1, sizeof *screen);
 
     if(NULL == screen)
 	return NULL;
@@ -593,12 +594,12 @@ static __GLXscreen * __glXAquaScreenProbe(ScreenPtr pScreen) {
 
     __glXScreenInit(&screen->base, pScreen);
 
-    screen->base.GLXversion = xstrdup("1.4");
-    screen->base.GLXextensions = xstrdup("GLX_SGIX_fbconfig "
-					 "GLX_SGIS_multisample "
-					 "GLX_ARB_multisample "
-					 "GLX_EXT_visual_info "
-					 "GLX_EXT_import_context ");
+    screen->base.GLXversion = strdup("1.4");
+    screen->base.GLXextensions = strdup("GLX_SGIX_fbconfig "
+                                        "GLX_SGIS_multisample "
+                                        "GLX_ARB_multisample "
+                                        "GLX_EXT_visual_info "
+                                        "GLX_EXT_import_context ");
     
     /*We may be able to add more GLXextensions at a later time. */
     
@@ -633,26 +634,28 @@ static void __glXAquaDrawableDestroy(__GLXdrawable *base) {
      *to validate the test, beyond using gdb with print.
      */
 
-    xfree(glxPriv);
+    free(glxPriv);
 }
 
 static __GLXdrawable *
-__glXAquaScreenCreateDrawable(__GLXscreen *screen,
+__glXAquaScreenCreateDrawable(ClientPtr client,
+                              __GLXscreen *screen,
 			      DrawablePtr pDraw,
-			      int type,
 			      XID drawId,
+			      int type,
+			      XID glxDrawId,
 			      __GLXconfig *conf) {
   __GLXAquaDrawable *glxPriv;
 
-  glxPriv = xalloc(sizeof *glxPriv);
+  glxPriv = malloc(sizeof *glxPriv);
 
   if(glxPriv == NULL)
       return NULL;
 
   memset(glxPriv, 0, sizeof *glxPriv);
 
-  if(!__glXDrawableInit(&glxPriv->base, screen, pDraw, type, drawId, conf)) {
-    xfree(glxPriv);
+  if(!__glXDrawableInit(&glxPriv->base, screen, pDraw, type, glxDrawId, conf)) {
+    free(glxPriv);
     return NULL;
   }
 

@@ -40,10 +40,14 @@ THE USE OR PERFORMANCE OF THIS SOFTWARE.
 #include <xkbsrv.h>
 #include "xkb.h"
 #include <ctype.h>
+#include "mi.h"
+#include "mipointer.h"
 #define EXTENSION_EVENT_BASE 64
 
-static int xkbDevicePrivateKeyIndex;
-DevPrivateKey xkbDevicePrivateKey = &xkbDevicePrivateKeyIndex;
+DevPrivateKeyRec xkbDevicePrivateKeyRec;
+
+void XkbFakeDeviceButton(DeviceIntPtr dev,Bool press,int button);
+static void XkbFakePointerMotion(DeviceIntPtr dev, unsigned flags,int x,int y);
 
 void
 xkbUnwrapProc(DeviceIntPtr device, DeviceHandleProc proc,
@@ -60,13 +64,18 @@ xkbUnwrapProc(DeviceIntPtr device, DeviceHandleProc proc,
 				 backupproc,xkbUnwrapProc);
 }
 
+Bool
+XkbInitPrivates(void)
+{
+    return dixRegisterPrivateKey(&xkbDevicePrivateKeyRec, PRIVATE_DEVICE, 0);
+}
 
 void
 XkbSetExtension(DeviceIntPtr device, ProcessInputProc proc)
 {
     xkbDeviceInfoPtr xkbPrivPtr;
 
-    xkbPrivPtr = (xkbDeviceInfoPtr) xcalloc(1, sizeof(xkbDeviceInfoRec));
+    xkbPrivPtr = (xkbDeviceInfoPtr) calloc(1, sizeof(xkbDeviceInfoRec));
     if (!xkbPrivPtr)
 	return;
     xkbPrivPtr->unwrapProc = NULL;
@@ -479,7 +488,7 @@ int		dx,dy;
 	dx= xkbi->mouseKeysDX;
 	dy= xkbi->mouseKeysDY;
     }
-    XkbDDXFakePointerMotion(xkbi->mouseKeysFlags,dx,dy);
+    XkbFakePointerMotion(xkbi->device, xkbi->mouseKeysFlags,dx,dy);
     return xkbi->desc->ctrls->mk_interval;
 }
 
@@ -491,9 +500,6 @@ _XkbFilterPointerMove(	XkbSrvInfoPtr	xkbi,
 {
 int	x,y;
 Bool	accel;
-
-    if (xkbi->device == inputInfo.keyboard)
-        return 0;
 
     if (filter->keycode==0) {		/* initial press */
 	filter->keycode = keycode;
@@ -507,7 +513,7 @@ Bool	accel;
 	accel= ((pAction->ptr.flags&XkbSA_NoAcceleration)==0);
 	x= XkbPtrActionX(&pAction->ptr);
 	y= XkbPtrActionY(&pAction->ptr);
-	XkbDDXFakePointerMotion(pAction->ptr.flags,x,y);
+	XkbFakePointerMotion(xkbi->device, pAction->ptr.flags,x,y);
 	AccessXCancelRepeatKey(xkbi,keycode);
 	xkbi->mouseKeysAccel= accel&&
 		(xkbi->desc->ctrls->enabled_ctrls&XkbMouseKeysAccelMask);
@@ -554,7 +560,7 @@ _XkbFilterPointerBtn(	XkbSrvInfoPtr	xkbi,
 			((pAction->btn.flags&XkbSA_LockNoLock)==0)) {
 		    xkbi->lockedPtrButtons|= (1<<button);
 		    AccessXCancelRepeatKey(xkbi,keycode);
-		    XkbDDXFakeDeviceButton(xkbi->device, 1, button);
+		    XkbFakeDeviceButton(xkbi->device, 1, button);
 		    filter->upAction.type= XkbSA_NoAction;
 		}
 		break;
@@ -565,12 +571,12 @@ _XkbFilterPointerBtn(	XkbSrvInfoPtr	xkbi,
 		    if (pAction->btn.count>0) {
 			nClicks= pAction->btn.count;
 			for (i=0;i<nClicks;i++) {
-			    XkbDDXFakeDeviceButton(xkbi->device, 1, button);
-			    XkbDDXFakeDeviceButton(xkbi->device, 0, button);
+			    XkbFakeDeviceButton(xkbi->device, 1, button);
+			    XkbFakeDeviceButton(xkbi->device, 0, button);
 			}
 			filter->upAction.type= XkbSA_NoAction;
 		    }
-		    else XkbDDXFakeDeviceButton(xkbi->device, 1, button);
+		    else XkbFakeDeviceButton(xkbi->device, 1, button);
 		}
 		break;
 	    case XkbSA_SetPtrDflt:
@@ -603,7 +609,7 @@ _XkbFilterPointerBtn(	XkbSrvInfoPtr	xkbi,
 		    }
 		    if (XkbComputeControlsNotify(xkbi->device,
 						&old,xkbi->desc->ctrls,
-						&cn,False)) {
+						&cn,FALSE)) {
 			cn.keycode = keycode;
                         /* XXX: what about DeviceKeyPress? */
 			cn.eventType = KeyPress;
@@ -625,8 +631,18 @@ _XkbFilterPointerBtn(	XkbSrvInfoPtr	xkbi,
 		    break;
 		}
 		xkbi->lockedPtrButtons&= ~(1<<button);
+
+		if (IsMaster(xkbi->device))
+		{
+		    XkbMergeLockedPtrBtns(xkbi->device);
+                    /* One SD still has lock set, don't post event */
+		    if ((xkbi->lockedPtrButtons & (1 << button)) != 0)
+			break;
+		}
+
+		/* fallthrough */
 	    case XkbSA_PtrBtn:
-		XkbDDXFakeDeviceButton(xkbi->device, 0, button);
+		XkbFakeDeviceButton(xkbi->device, 0, button);
 		break;
 	}
 	filter->active = 0;
@@ -668,7 +684,7 @@ XkbEventCauseRec	cause;
 	    XkbSrvLedInfoPtr	sli;
 
 	    ctrls->enabled_ctrls|= change;
-	    if (XkbComputeControlsNotify(kbd,&old,ctrls,&cn,False)) {
+	    if (XkbComputeControlsNotify(kbd,&old,ctrls,&cn,FALSE)) {
 		cn.keycode = keycode;
                 /* XXX: what about DeviceKeyPress? */
 		cn.eventType = KeyPress;
@@ -682,10 +698,10 @@ XkbEventCauseRec	cause;
 	    /* If sticky keys were disabled, clear all locks and latches */
 	    if ((old.enabled_ctrls&XkbStickyKeysMask)&&
 		(!(ctrls->enabled_ctrls&XkbStickyKeysMask))) {
-		XkbClearAllLatchesAndLocks(kbd,xkbi,False,&cause);
+		XkbClearAllLatchesAndLocks(kbd,xkbi,FALSE,&cause);
     	    }
 	    sli= XkbFindSrvLedInfo(kbd,XkbDfltXIClass,XkbDfltXIId,0);
-	    XkbUpdateIndicators(kbd,sli->usesControls,True,NULL,&cause);
+	    XkbUpdateIndicators(kbd,sli->usesControls,TRUE,NULL,&cause);
 	    if (XkbAX_NeedFeedback(ctrls,XkbAX_FeatureFBMask))
 		XkbDDXAccessXBeep(kbd,_BEEP_FEATURE_ON,change);
 	}
@@ -697,7 +713,7 @@ XkbEventCauseRec	cause;
 	    XkbSrvLedInfoPtr	sli;
 
 	    ctrls->enabled_ctrls&= ~change;
-	    if (XkbComputeControlsNotify(kbd,&old,ctrls,&cn,False)) {
+	    if (XkbComputeControlsNotify(kbd,&old,ctrls,&cn,FALSE)) {
 		cn.keycode = keycode;
 		cn.eventType = KeyRelease;
 		cn.requestMajor = 0;
@@ -709,10 +725,10 @@ XkbEventCauseRec	cause;
 	    /* If sticky keys were disabled, clear all locks and latches */
 	    if ((old.enabled_ctrls&XkbStickyKeysMask)&&
 		(!(ctrls->enabled_ctrls&XkbStickyKeysMask))) {
-		XkbClearAllLatchesAndLocks(kbd,xkbi,False,&cause);
+		XkbClearAllLatchesAndLocks(kbd,xkbi,FALSE,&cause);
     	    }
 	    sli= XkbFindSrvLedInfo(kbd,XkbDfltXIClass,XkbDfltXIId,0);
-	    XkbUpdateIndicators(kbd,sli->usesControls,True,NULL,&cause);
+	    XkbUpdateIndicators(kbd,sli->usesControls,TRUE,NULL,&cause);
 	    if (XkbAX_NeedFeedback(ctrls,XkbAX_FeatureFBMask))
 		XkbDDXAccessXBeep(kbd,_BEEP_FEATURE_OFF,change);
 	}
@@ -790,6 +806,7 @@ ProcessInputProc backupproc;
     /* never actually used uninitialised, but gcc isn't smart enough
      * to work that out. */
     memset(&old, 0, sizeof(old));
+    memset(&ev, 0, sizeof(ev));
 
     if ((filter->keycode!=0)&&(filter->keycode!=keycode))
 	return 1;
@@ -964,7 +981,7 @@ int		button;
 		if ((pAction->devbtn.flags&XkbSA_LockNoLock)||
 		    BitIsOn(dev->button->down, button))
 		    return 0;
-		XkbDDXFakeDeviceButton(dev,True,button);
+		XkbFakeDeviceButton(dev,TRUE,button);
 		filter->upAction.type= XkbSA_NoAction;
 		break;
 	    case XkbSA_DeviceBtn:
@@ -972,12 +989,12 @@ int		button;
 		    int nClicks,i;
 		    nClicks= pAction->btn.count;
 		    for (i=0;i<nClicks;i++) {
-			XkbDDXFakeDeviceButton(dev,True,button);
-			XkbDDXFakeDeviceButton(dev,False,button);
+			XkbFakeDeviceButton(dev,TRUE,button);
+			XkbFakeDeviceButton(dev,FALSE,button);
 		    }
 		    filter->upAction.type= XkbSA_NoAction;
 		}
-		else XkbDDXFakeDeviceButton(dev,True,button);
+		else XkbFakeDeviceButton(dev,TRUE,button);
 		break;
 	}
     }
@@ -996,10 +1013,10 @@ int		button;
 		if ((filter->upAction.devbtn.flags&XkbSA_LockNoUnlock)||
 		    !BitIsOn(dev->button->down, button))
 		    return 0;
-		XkbDDXFakeDeviceButton(dev,False,button);
+		XkbFakeDeviceButton(dev,FALSE,button);
 		break;
 	    case XkbSA_DeviceBtn:
-		XkbDDXFakeDeviceButton(dev,False,button);
+		XkbFakeDeviceButton(dev,FALSE,button);
 		break;
 	}
 	filter->active = 0;
@@ -1016,7 +1033,7 @@ register int	i;
 
     if (xkbi->szFilters==0) {
 	xkbi->szFilters = 4;
-	xkbi->filters = _XkbTypedCalloc(xkbi->szFilters,XkbFilterRec);
+	xkbi->filters = calloc(xkbi->szFilters, sizeof(XkbFilterRec));
 	/* 6/21/93 (ef) -- XXX! deal with allocation failure */
     }
     for (i=0;i<xkbi->szFilters;i++) {
@@ -1026,11 +1043,10 @@ register int	i;
 	}
     }
     xkbi->szFilters*=2;
-    xkbi->filters= _XkbTypedRealloc(xkbi->filters,
-                                    xkbi->szFilters,
-                                    XkbFilterRec);
+    xkbi->filters= realloc(xkbi->filters,
+                            xkbi->szFilters * sizeof(XkbFilterRec));
     /* 6/21/93 (ef) -- XXX! deal with allocation failure */
-    bzero(&xkbi->filters[xkbi->szFilters/2],
+    memset(&xkbi->filters[xkbi->szFilters/2], 0,
             (xkbi->szFilters/2)*sizeof(XkbFilterRec));
     return &xkbi->filters[xkbi->szFilters/2];
 }
@@ -1073,9 +1089,9 @@ xkbDeviceInfoPtr xkbPrivPtr = XKBDEVICEINFO(dev);
     if ((xkbi->flags&_XkbStateNotifyInProgress)==0) {
 	xkbi->prev_state = xkbi->state;
 	xkbi->flags|= _XkbStateNotifyInProgress;
-	genStateNotify= True;
+	genStateNotify= TRUE;
     }
-    else genStateNotify= False;
+    else genStateNotify= FALSE;
 
     xkbi->clearMods = xkbi->setMods = 0;
     xkbi->groupChange = 0;
@@ -1214,11 +1230,11 @@ xkbDeviceInfoPtr xkbPrivPtr = XKBDEVICEINFO(dev);
 	}
 	xkbi->flags&= ~_XkbStateNotifyInProgress;
     }
-    changed= XkbIndicatorsToUpdate(dev,changed,False);
+    changed= XkbIndicatorsToUpdate(dev,changed,FALSE);
     if (changed) {
 	XkbEventCauseRec	cause;
 	XkbSetCauseKey(&cause, key, event->type);
-	XkbUpdateIndicators(dev,changed,False,NULL,&cause);
+	XkbUpdateIndicators(dev,changed,FALSE,NULL,&cause);
     }
     return;
 }
@@ -1309,11 +1325,114 @@ xkbStateNotify	sn;
 	sn.requestMinor= 	cause->mnr;
 	sn.changed= XkbStateChangedFlags(&os,&xkbi->state);
 	XkbSendStateNotify(dev,&sn);
-	changed= XkbIndicatorsToUpdate(dev,sn.changed,False);
+	changed= XkbIndicatorsToUpdate(dev,sn.changed,FALSE);
 	if (changed) {
-	    XkbUpdateIndicators(dev,changed,True,NULL,cause);
+	    XkbUpdateIndicators(dev,changed,TRUE,NULL,cause);
 	}
     }
     return;
 }
 
+/*
+ * The event is injected into the event processing, not the EQ. Thus,
+ * ensure that we restore the master after the event sequence to the
+ * original set of classes. Otherwise, the master remains on the XTEST
+ * classes and drops events that don't fit into the XTEST layout (e.g.
+ * events with more than 2 valuators).
+ *
+ * FIXME: EQ injection in the processing stage is not designed for, so this
+ * is a rather awkward hack. The event list returned by GetPointerEvents()
+ * and friends is always prefixed with a DCE if the last _posted_ device was
+ * different. For normal events, this sequence then resets the master during
+ * the processing stage. Since we inject the PointerKey events in the
+ * processing stage though, we need to manually reset to restore the
+ * previous order, because the events already in the EQ must be sent for the
+ * right device.
+ * So we post-fix the event list we get from GPE with a DCE back to the
+ * previous slave device.
+ *
+ * First one on drinking island wins!
+ */
+static void
+InjectPointerKeyEvents(DeviceIntPtr dev, int type, int button, int flags, int num_valuators, int *valuators)
+{
+    ScreenPtr           pScreen;
+    EventListPtr        events;
+    int                 nevents, i;
+    DeviceIntPtr        ptr, mpointer, lastSlave = NULL;
+    Bool                saveWait;
+
+    if (IsMaster(dev)) {
+        mpointer = GetMaster(dev, MASTER_POINTER);
+        lastSlave = mpointer->u.lastSlave;
+        ptr = GetXTestDevice(mpointer);
+    } else if (!dev->u.master)
+        ptr = dev;
+    else
+        return;
+
+
+    events = InitEventList(GetMaximumEventsNum() + 1);
+    OsBlockSignals();
+    pScreen = miPointerGetScreen(ptr);
+    saveWait = miPointerSetWaitForUpdate(pScreen, FALSE);
+    nevents = GetPointerEvents(events, ptr, type, button, flags, 0,
+                               num_valuators, valuators);
+    if (IsMaster(dev) && (lastSlave && lastSlave != ptr))
+        UpdateFromMaster(&events[nevents], lastSlave, DEVCHANGE_POINTER_EVENT, &nevents);
+    miPointerSetWaitForUpdate(pScreen, saveWait);
+    OsReleaseSignals();
+
+    for (i = 0; i < nevents; i++)
+        mieqProcessDeviceEvent(ptr, (InternalEvent*)events[i].event, NULL);
+
+    FreeEventList(events, GetMaximumEventsNum());
+
+}
+
+static void
+XkbFakePointerMotion(DeviceIntPtr dev, unsigned flags,int x,int y)
+{
+    int                 gpe_flags = 0;
+
+    /* ignore attached SDs */
+    if (!IsMaster(dev) && GetMaster(dev, MASTER_POINTER) != NULL)
+        return;
+
+    if (flags & XkbSA_MoveAbsoluteX || flags & XkbSA_MoveAbsoluteY)
+        gpe_flags = POINTER_ABSOLUTE;
+    else
+        gpe_flags = POINTER_RELATIVE;
+
+    InjectPointerKeyEvents(dev, MotionNotify, 0, gpe_flags, 2, (int[]){x, y});
+}
+
+void
+XkbFakeDeviceButton(DeviceIntPtr dev,Bool press,int button)
+{
+    DeviceIntPtr        ptr;
+    int                 down;
+
+    /* If dev is a slave device, and the SD is attached, do nothing. If we'd
+     * post through the attached master pointer we'd get duplicate events.
+     *
+     * if dev is a master keyboard, post through the XTEST device
+     *
+     * if dev is a floating slave, post through the device itself.
+     */
+
+    if (IsMaster(dev)) {
+        DeviceIntPtr mpointer = GetMaster(dev, MASTER_POINTER);
+        ptr = GetXTestDevice(mpointer);
+    } else if (!dev->u.master)
+        ptr = dev;
+    else
+        return;
+
+    down = button_is_down(ptr, button, BUTTON_PROCESSED);
+    if (press == down)
+        return;
+
+    InjectPointerKeyEvents(dev, press ? ButtonPress : ButtonRelease,
+                           button, 0, 0, NULL);
+}

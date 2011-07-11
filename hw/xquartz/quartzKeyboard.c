@@ -39,18 +39,23 @@
 
 #define HACK_MISSING 1
 #define HACK_KEYPAD 1
+#define HACK_BLACKLIST 1
 
+#include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
 #include <sys/stat.h>
 #include <AvailabilityMacros.h>
 
-#include "quartzCommon.h"
+#include "quartz.h"
 #include "darwin.h"
+#include "darwinEvents.h"
 
 #include "quartzKeyboard.h"
 #include "quartzAudio.h"
+
+#include "X11Application.h"
 
 #include "threadSafety.h"
 
@@ -80,6 +85,7 @@ enum {
 
 #define UKEYSYM(u) ((u) | 0x01000000)
 
+#if HACK_MISSING
 /* Table of keycode->keysym mappings we use to fallback on for important
    keys that are often not in the Unicode mapping. */
 
@@ -114,7 +120,9 @@ const static struct {
     {107, XK_F14},
     {113, XK_F15},
 };
+#endif
 
+#if HACK_KEYPAD
 /* Table of keycode->old,new-keysym mappings we use to fixup the numeric
    keypad entries. */
 
@@ -140,6 +148,17 @@ const static struct {
     {91, XK_8, XK_KP_8},
     {92, XK_9, XK_KP_9},
 };
+#endif
+
+#if HACK_BLACKLIST
+/* <rdar://problem/7824370> wine notepad produces wrong characters on shift+arrow
+ * http://xquartz.macosforge.org/trac/ticket/295
+ * http://developer.apple.com/legacy/mac/library/documentation/mac/Text/Text-579.html
+ *
+ * legacy Mac keycodes for arrow keys that shift-modify to math symbols
+ */
+const static unsigned short keycode_blacklist[] = {66, 70, 72, 77};
+#endif
 
 /* Table mapping normal keysyms to their dead equivalents.
    FIXME: all the unicode keysyms (apart from circumflex) were guessed. */
@@ -172,6 +191,12 @@ const static struct {
     {UKEYSYM (0x309), XK_dead_hook}, 		/* COMBINING HOOK ABOVE */
     {UKEYSYM (0x31b), XK_dead_horn},		/* COMBINING HORN */
 };
+
+typedef struct darwinKeyboardInfo_struct {
+    CARD8 modMap[MAP_LENGTH];
+    KeySym keyMap[MAP_LENGTH * GLYPHS_PER_KEY];
+    unsigned char modifierKeycodes[32][2];
+} darwinKeyboardInfo;
 
 darwinKeyboardInfo keyInfo;
 pthread_mutex_t keyInfo_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -237,7 +262,8 @@ static void DarwinBuildModifierMaps(darwinKeyboardInfo *info) {
             case XK_Alt_L:
                 info->modifierKeycodes[NX_MODIFIERKEY_ALTERNATE][0] = i;
                 info->modMap[MIN_KEYCODE + i] = Mod1Mask;
-                *k = XK_Mode_switch; // Yes, this is ugly.  This needs to be cleaned up when we integrate quartzKeyboard with this code and refactor.
+                if(!XQuartzOptionSendsAlt)
+                    *k = XK_Mode_switch; // Yes, this is ugly.  This needs to be cleaned up when we integrate quartzKeyboard with this code and refactor.
                 break;
 
             case XK_Alt_R:
@@ -246,11 +272,13 @@ static void DarwinBuildModifierMaps(darwinKeyboardInfo *info) {
 #else
                 info->modifierKeycodes[NX_MODIFIERKEY_ALTERNATE][0] = i;
 #endif
-                *k = XK_Mode_switch; // Yes, this is ugly.  This needs to be cleaned up when we integrate quartzKeyboard with this code and refactor.
+                if(!XQuartzOptionSendsAlt)
+                    *k = XK_Mode_switch; // Yes, this is ugly.  This needs to be cleaned up when we integrate quartzKeyboard with this code and refactor.
                 info->modMap[MIN_KEYCODE + i] = Mod1Mask;
                 break;
 
             case XK_Mode_switch:
+                ErrorF("DarwinBuildModifierMaps: XK_Mode_switch encountered, unable to determine side.\n");
                 info->modifierKeycodes[NX_MODIFIERKEY_ALTERNATE][0] = i;
 #ifdef NX_MODIFIERKEY_RALTERNATE
                 info->modifierKeycodes[NX_MODIFIERKEY_RALTERNATE][0] = i;
@@ -290,9 +318,6 @@ void DarwinKeyboardInit(DeviceIntPtr pDev) {
     // Note that the Event Status Driver is really just a wrapper
     // for a kIOHIDParamConnectType connection.
     assert(darwinParamConnect = NXOpenEventStatus());
-
-    /* We need to really have rules... or something... */
-    //XkbSetRulesDflts("base", "pc105", "us", NULL, NULL);
 
     InitKeyboardDeviceStruct(pDev, NULL, NULL, DarwinChangeKeyboardControl);
 
@@ -358,7 +383,11 @@ void DarwinKeyboardReloadHandler(void) {
     KeySymsRec keySyms;
     CFIndex initialKeyRepeatValue, keyRepeatValue;
     BOOL ok;
-    DeviceIntPtr pDev = darwinKeyboard;
+    DeviceIntPtr pDev;
+    const char *xmodmap = PROJECTROOT "/bin/xmodmap";
+    const char *sysmodmap = PROJECTROOT "/lib/X11/xinit/.Xmodmap";
+    const char *homedir = getenv("HOME");
+    char usermodmap[PATH_MAX], cmd[PATH_MAX];
 
     DEBUG_LOG("DarwinKeyboardReloadHandler\n");
 
@@ -375,12 +404,12 @@ void DarwinKeyboardReloadHandler(void) {
     
     pthread_mutex_lock(&keyInfo_mutex); {
         /* Initialize our keySyms */
-        DarwinBuildModifierMaps(&keyInfo);
         keySyms.map = keyInfo.keyMap;
         keySyms.mapWidth   = GLYPHS_PER_KEY;
         keySyms.minKeyCode = MIN_KEYCODE;
         keySyms.maxKeyCode = MAX_KEYCODE;
 
+	// TODO: We should build the entire XkbDescRec and use XkbCopyKeymap
         /* Apply the mappings to darwinKeyboard */
         XkbApplyMappingChange(darwinKeyboard, &keySyms, keySyms.minKeyCode,
                               keySyms.maxKeyCode - keySyms.minKeyCode + 1,
@@ -397,6 +426,31 @@ void DarwinKeyboardReloadHandler(void) {
             }
         }
     } pthread_mutex_unlock(&keyInfo_mutex);
+
+    /* Modify with xmodmap */
+    if (access(xmodmap, F_OK) == 0) {
+        /* Check for system .Xmodmap */
+        if (access(sysmodmap, F_OK) == 0) {
+            if(snprintf (cmd, sizeof(cmd), "%s %s", xmodmap, sysmodmap) < sizeof(cmd)) {
+                X11ApplicationLaunchClient(cmd);
+            } else {
+                ErrorF("X11.app: Unable to create / execute xmodmap command line");
+            }
+        }
+
+        /* Check for user's local .Xmodmap */
+        if ((homedir != NULL) && (snprintf (usermodmap, sizeof(usermodmap), "%s/.Xmodmap", homedir) < sizeof(usermodmap))) {
+            if (access(usermodmap, F_OK) == 0) {
+                if(snprintf (cmd, sizeof(cmd), "%s %s", xmodmap, usermodmap) < sizeof(cmd)) {
+                    X11ApplicationLaunchClient(cmd);
+                } else {
+                    ErrorF("X11.app: Unable to create / execute xmodmap command line");
+                }
+            }
+        } else {
+            ErrorF("X11.app: Unable to determine path to user's .Xmodmap");
+        }
+    }
 }
 
 //-----------------------------------------------------------------------------
@@ -610,7 +664,7 @@ static KeySym make_dead_key(KeySym in) {
     return in;
 }
 
-Bool QuartzReadSystemKeymap(darwinKeyboardInfo *info) {
+static Bool QuartzReadSystemKeymap(darwinKeyboardInfo *info) {
 #if !defined(__LP64__) || MAC_OS_X_VERSION_MIN_REQUIRED < 1050
     KeyboardLayoutRef key_layout;
     int is_uchr = 1;
@@ -713,7 +767,10 @@ Bool QuartzReadSystemKeymap(darwinKeyboardInfo *info) {
                     if (err != noErr) continue;
                 }
 
-                if (len > 0 && s[0] != 0x0010) {
+                /* Not sure why 0x0010 is there.
+                 * 0x0000 - <rdar://problem/7793566> 'Unicode Hex Input' ...
+                 */
+                if (len > 0 && s[0] != 0x0010 && s[0] != 0x0000) {
                     k[j] = ucs2keysym (s[0]);
                     if (dead_key_state != 0) k[j] = make_dead_key (k[j]);
                 }
@@ -747,32 +804,55 @@ Bool QuartzReadSystemKeymap(darwinKeyboardInfo *info) {
         if (k[3] == k[2]) k[3] = NoSymbol;
         if (k[1] == k[0]) k[1] = NoSymbol;
         if (k[0] == k[2] && k[1] == k[3]) k[2] = k[3] = NoSymbol;
+        if (k[3] == k[0] && k[2] == k[1] && k[2] == NoSymbol) k[3] = NoSymbol;
     }
 
+#if HACK_MISSING
     /* Fix up some things that are normally missing.. */
-
-    if (HACK_MISSING) {
-        for (i = 0; i < sizeof (known_keys) / sizeof (known_keys[0]); i++) {
-            k = info->keyMap + known_keys[i].keycode * GLYPHS_PER_KEY;
-
-            if    (k[0] == NoSymbol && k[1] == NoSymbol
-                && k[2] == NoSymbol && k[3] == NoSymbol)
-	      k[0] = known_keys[i].keysym;
-        }
+    
+    for (i = 0; i < sizeof (known_keys) / sizeof (known_keys[0]); i++) {
+        k = info->keyMap + known_keys[i].keycode * GLYPHS_PER_KEY;
+        
+        if (   k[0] == NoSymbol && k[1] == NoSymbol
+            && k[2] == NoSymbol && k[3] == NoSymbol)
+            k[0] = known_keys[i].keysym;
     }
-
+#endif
+    
+#if HACK_KEYPAD
     /* And some more things. We find the right symbols for the numeric
-       keypad, but not the KP_ keysyms. So try to convert known keycodes. */
-
-    if (HACK_KEYPAD) {
-        for (i = 0; i < sizeof (known_numeric_keys)
-                        / sizeof (known_numeric_keys[0]); i++) {
-            k = info->keyMap + known_numeric_keys[i].keycode * GLYPHS_PER_KEY;
-
-            if (k[0] == known_numeric_keys[i].normal)
-                k[0] = known_numeric_keys[i].keypad;
-        }
+     keypad, but not the KP_ keysyms. So try to convert known keycodes. */
+    for (i = 0; i < sizeof (known_numeric_keys) / sizeof (known_numeric_keys[0]); i++) {
+        k = info->keyMap + known_numeric_keys[i].keycode * GLYPHS_PER_KEY;
+        
+        if (k[0] == known_numeric_keys[i].normal)
+            k[0] = known_numeric_keys[i].keypad;
     }
+#endif
+    
+#if HACK_BLACKLIST
+    for (i = 0; i < sizeof (keycode_blacklist) / sizeof (keycode_blacklist[0]); i++) {
+        k = info->keyMap + keycode_blacklist[i] * GLYPHS_PER_KEY;
+        k[0] = k[1] = k[2] = k[3] = NoSymbol;
+    }
+#endif
+
+    DarwinBuildModifierMaps(info);
 
     return TRUE;
+}
+
+Bool QuartsResyncKeymap(Bool sendDDXEvent) {
+    Bool retval;
+    /* Update keyInfo */
+    pthread_mutex_lock(&keyInfo_mutex);
+    memset(keyInfo.keyMap, 0, sizeof(keyInfo.keyMap));
+    retval = QuartzReadSystemKeymap(&keyInfo);
+    pthread_mutex_unlock(&keyInfo_mutex);
+
+    /* Tell server thread to deal with new keyInfo */
+    if(sendDDXEvent)
+        DarwinSendDDXEvent(kXquartzReloadKeymap, 0);
+
+    return retval;
 }

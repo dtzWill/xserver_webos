@@ -32,6 +32,7 @@ BUILTIN_SRCS =			\
 
 # Sources always included in libXextmodule.la & libXext.la. That's right, zero.
 MODULE_SRCS =
+MODULE_LIBS =
 
 # Optional sources included if extension enabled by configure.ac rules
 
@@ -80,9 +81,10 @@ endif
 
 # SELinux extension: provides SELinux policy support for X objects
 # requires X-ACE extension
-XSELINUX_SRCS = xselinux.c xselinux.h
+XSELINUX_SRCS = xselinux_ext.c xselinux_hooks.c xselinux_label.c xselinux.h xselinuxint.h
 if XSELINUX
 MODULE_SRCS += $(XSELINUX_SRCS)
+MODULE_LIBS += $(SELINUX_LIBS)
 endif
 
 # Security extension: multi-level security to protect clients from each other
@@ -97,15 +99,8 @@ BUILTIN_SRCS += $(XCALIBRATE_SRCS)
 # XCalibrate needs tslib
 endif
 
-# Multi-buffering extension
-MULTIBUFFER_SRCS = mbuf.c
-EXTRA_MULTIBUFFER_SRCS = mbufbf.c mbufpx.c
-if MULTIBUFFER
-MODULE_SRCS  += $(MULTIBUFFER_SRCS)
-endif
-
 # XF86 Big Font extension
-BIGFONT_SRCS = xf86bigfont.c
+BIGFONT_SRCS = xf86bigfont.c xf86bigfontsrv.h
 if XF86BIGFONT
 BUILTIN_SRCS += $(BIGFONT_SRCS)
 endif
@@ -119,11 +114,13 @@ endif
 # Now take all of the above, mix well, bake for 10 minutes and get libXext*.la
 
 libXext_la_SOURCES =		$(BUILTIN_SRCS) $(MODULE_SRCS)
+libXext_la_LIBADD =		$(MODULE_LIBS)
 
 if XORG
 libXextbuiltin_la_SOURCES =	$(BUILTIN_SRCS)
 
 libXextmodule_la_SOURCES =	$(MODULE_SRCS)
+libXextmodule_la_LIBADD =	$(MODULE_LIBS)
 endif
 
 EXTRA_DIST = \
@@ -133,11 +130,9 @@ EXTRA_DIST = \
 	$(SCREENSAVER_SRCS) \
 	$(XACE_SRCS) \
 	$(XCSECURITY_SRCS) \
+	$(XSELINUX_SRCS) \
 	$(XCALIBRATE_SRCS) \
 	$(XINERAMA_SRCS) \
-	$(MULTIBUFFER_SRCS) \
-	$(EXTRA_MULTIBUFFER_SRCS) \
-	$(FONTCACHE_SRCS) \
 	$(BIGFONT_SRCS) \
 	$(DPMS_SRCS) \
         $(GE_SRCS)

@@ -88,7 +88,6 @@ do_butmap_change(DeviceIntPtr dev, CARD8 *map, int len, ClientPtr client)
         if (!XIShouldNotify(clients[i], dev))
             continue;
 
-        core_mn.u.u.sequenceNumber = clients[i]->sequence;
         WriteEventsToClient(clients[i], 1, &core_mn);
     }
 
@@ -287,7 +286,7 @@ int generate_modkeymap(ClientPtr client, DeviceIntPtr dev,
 {
     CARD8 keys_per_mod[8];
     int max_keys_per_mod;
-    KeyCode *modkeymap;
+    KeyCode *modkeymap = NULL;
     int i, j, ret;
 
     ret = XaceHook(XACE_DEVICE_ACCESS, client, dev, DixGetAttrAccess);
@@ -311,18 +310,20 @@ int generate_modkeymap(ClientPtr client, DeviceIntPtr dev,
         }
     }
 
-    modkeymap = xcalloc(max_keys_per_mod * 8, sizeof(KeyCode));
-    if (!modkeymap)
-        return BadAlloc;
+    if (max_keys_per_mod != 0) {
+        modkeymap = calloc(max_keys_per_mod * 8, sizeof(KeyCode));
+        if (!modkeymap)
+            return BadAlloc;
 
-    for (i = 0; i < 8; i++)
-        keys_per_mod[i] = 0;
+        for (i = 0; i < 8; i++)
+            keys_per_mod[i] = 0;
 
-    for (i = 8; i < MAP_LENGTH; i++) {
-        for (j = 0; j < 8; j++) {
-            if (dev->key->xkbInfo->desc->map->modmap[i] & (1 << j)) {
-                modkeymap[(j * max_keys_per_mod) + keys_per_mod[j]] = i;
-                keys_per_mod[j]++;
+        for (i = 8; i < MAP_LENGTH; i++) {
+            for (j = 0; j < 8; j++) {
+                if (dev->key->xkbInfo->desc->map->modmap[i] & (1 << j)) {
+                    modkeymap[(j * max_keys_per_mod) + keys_per_mod[j]] = i;
+                    keys_per_mod[j]++;
+                }
             }
         }
     }
@@ -332,3 +333,88 @@ int generate_modkeymap(ClientPtr client, DeviceIntPtr dev,
 
     return Success;
 }
+
+/**
+ * Duplicate the InputAttributes in the most obvious way.
+ * No special memory handling is used to give drivers the maximum
+ * flexibility with the data. Drivers should be able to call realloc on the
+ * product string if needed and perform similar operations.
+ */
+InputAttributes*
+DuplicateInputAttributes(InputAttributes *attrs)
+{
+    InputAttributes *new_attr;
+    int ntags = 0;
+    char **tags, **new_tags;
+
+    if (!attrs)
+        return NULL;
+
+    if (!(new_attr = calloc(1, sizeof(InputAttributes))))
+        goto unwind;
+
+    if (attrs->product && !(new_attr->product = strdup(attrs->product)))
+        goto unwind;
+    if (attrs->vendor && !(new_attr->vendor = strdup(attrs->vendor)))
+        goto unwind;
+    if (attrs->device && !(new_attr->device = strdup(attrs->device)))
+        goto unwind;
+    if (attrs->pnp_id && !(new_attr->pnp_id = strdup(attrs->pnp_id)))
+        goto unwind;
+    if (attrs->usb_id && !(new_attr->usb_id = strdup(attrs->usb_id)))
+        goto unwind;
+
+    new_attr->flags = attrs->flags;
+
+    if ((tags = attrs->tags))
+    {
+        while(*tags++)
+            ntags++;
+
+        new_attr->tags = calloc(ntags + 1, sizeof(char*));
+        if (!new_attr->tags)
+            goto unwind;
+
+        tags = attrs->tags;
+        new_tags = new_attr->tags;
+
+        while(*tags)
+        {
+            *new_tags = strdup(*tags);
+            if (!*new_tags)
+                goto unwind;
+
+            tags++;
+            new_tags++;
+        }
+    }
+
+    return new_attr;
+
+unwind:
+    FreeInputAttributes(new_attr);
+    return NULL;
+}
+
+void
+FreeInputAttributes(InputAttributes *attrs)
+{
+    char **tags;
+
+    if (!attrs)
+        return;
+
+    free(attrs->product);
+    free(attrs->vendor);
+    free(attrs->device);
+    free(attrs->pnp_id);
+    free(attrs->usb_id);
+
+    if ((tags = attrs->tags))
+        while(*tags)
+            free(*tags++);
+
+    free(attrs->tags);
+    free(attrs);
+}
+

@@ -35,6 +35,13 @@
 /* BOOL. If present, device is a virtual XTEST device */
 #define XI_PROP_XTEST_DEVICE  "XTEST Device"
 
+/* Coordinate transformation matrix for absolute input devices
+ * FLOAT, 9 values in row-major order, coordinates in 0..1 range:
+ * [c0 c1 c2]   [x]
+ * [c3 c4 c5] * [y]
+ * [c6 c7 c8]   [1] */
+#define XI_PROP_TRANSFORM "Coordinate Transformation Matrix"
+
 /* Pointer acceleration properties */
 /* INTEGER of any format */
 #define ACCEL_PROP_PROFILE_NUMBER "Device Accel Profile"
@@ -89,6 +96,17 @@
 #define AXIS_LABEL_PROP_ABS_TILT_Y      "Abs Tilt Y"
 #define AXIS_LABEL_PROP_ABS_TOOL_WIDTH  "Abs Tool Width"
 #define AXIS_LABEL_PROP_ABS_VOLUME      "Abs Volume"
+#define AXIS_LABEL_PROP_ABS_MT_TOUCH_MAJOR "Abs MT Touch Major"
+#define AXIS_LABEL_PROP_ABS_MT_TOUCH_MINOR "Abs MT Touch Minor"
+#define AXIS_LABEL_PROP_ABS_MT_WIDTH_MAJOR "Abs MT Width Major"
+#define AXIS_LABEL_PROP_ABS_MT_WIDTH_MINOR "Abs MT Width Minor"
+#define AXIS_LABEL_PROP_ABS_MT_ORIENTATION "Abs MT Orientation"
+#define AXIS_LABEL_PROP_ABS_MT_POSITION_X  "Abs MT Position X"
+#define AXIS_LABEL_PROP_ABS_MT_POSITION_Y  "Abs MT Position Y"
+#define AXIS_LABEL_PROP_ABS_MT_TOOL_TYPE   "Abs MT Tool Type"
+#define AXIS_LABEL_PROP_ABS_MT_BLOB_ID     "Abs MT Blob ID"
+#define AXIS_LABEL_PROP_ABS_MT_TRACKING_ID "Abs MT Tracking ID"
+#define AXIS_LABEL_PROP_ABS_MT_PRESSURE    "Abs MT Pressure"
 #define AXIS_LABEL_PROP_ABS_MISC        "Abs Misc"
 
 /* Button names */

@@ -27,6 +27,8 @@
 
 #include <stdint.h>
 #include "extinit.h" /* for XInputExtensionInit */
+#include "exglobals.h"
+#include "xkbsrv.h" /* for XkbInitPrivates */
 #include <glib.h>
 
 #include "protocol-common.h"
@@ -47,7 +49,7 @@ static void fake_init_sprite(DeviceIntPtr dev)
     sprite = dev->spriteInfo->sprite;
 
     sprite->spriteTraceSize = 10;
-    sprite->spriteTrace = xcalloc(sprite->spriteTraceSize, sizeof(WindowPtr));
+    sprite->spriteTrace = calloc(sprite->spriteTraceSize, sizeof(WindowPtr));
     sprite->spriteTraceGood = 1;
     sprite->spriteTrace[0] = &root;
     sprite->hot.x = SPRITE_X;
@@ -107,7 +109,6 @@ ClientRec init_client(int len, void *data)
     /* we store the privates now and reassign it after the memset. this way
      * we can share them across multiple test runs and don't have to worry
      * about freeing them after each test run. */
-    PrivateRec *privates = client.devPrivates;
 
     client.index = CLIENT_INDEX;
     client.clientAsMask = CLIENT_MASK;
@@ -115,7 +116,7 @@ ClientRec init_client(int len, void *data)
     client.req_len = len;
 
     client.requestBuffer = data;
-    client.devPrivates = privates;
+    dixAllocatePrivates(&client.devPrivates, PRIVATE_CLIENT);
     return client;
 }
 
@@ -132,16 +133,18 @@ void init_window(WindowPtr window, WindowPtr parent, int id)
         window->drawable.height = 200;
     }
     window->parent = parent;
-    window->optional = xcalloc(1, sizeof(WindowOptRec));
+    window->optional = calloc(1, sizeof(WindowOptRec));
     g_assert(window->optional);
 }
+
+extern DevPrivateKeyRec miPointerScreenKeyRec;
+extern DevPrivateKeyRec miPointerPrivKeyRec;
 
 /* Needed for the screen setup, otherwise we crash during sprite initialization */
 static Bool device_cursor_init(DeviceIntPtr dev, ScreenPtr screen) { return TRUE; }
 static Bool set_cursor_pos(DeviceIntPtr dev, ScreenPtr screen, int x, int y, Bool event) { return TRUE; }
 void init_simple(void)
 {
-    screenInfo.arraySize = MAXSCREENS;
     screenInfo.numScreens = 1;
     screenInfo.screens[0] = &screen;
 
@@ -153,7 +156,13 @@ void init_simple(void)
     screen.SetCursorPosition = set_cursor_pos;
 
     dixResetPrivates();
+    InitAtoms();
+    XkbInitPrivates();
+    dixRegisterPrivateKey(&XIClientPrivateKeyRec, PRIVATE_CLIENT, sizeof(XIClientRec));
+    dixRegisterPrivateKey(&miPointerScreenKeyRec, PRIVATE_SCREEN, 0);
+    dixRegisterPrivateKey(&miPointerPrivKeyRec, PRIVATE_DEVICE, 0);
     XInputExtensionInit();
+
     init_window(&root, NULL, ROOT_WINDOW_ID);
     init_window(&window, &root, CLIENT_WINDOW_ID);
 

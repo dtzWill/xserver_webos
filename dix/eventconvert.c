@@ -102,6 +102,15 @@ EventToCore(InternalEvent *event, xEvent *core)
     switch(event->any.type)
     {
         case ET_Motion:
+            {
+                DeviceEvent *e = &event->device_event;
+                /* Don't create core motion event if neither x nor y are
+                 * present */
+                if (!BitIsOn(e->valuators.mask, 0) &&
+                    !BitIsOn(e->valuators.mask, 1))
+                    return BadMatch;
+            }
+            /* fallthrough */
         case ET_ButtonPress:
         case ET_ButtonRelease:
         case ET_KeyPress:
@@ -119,6 +128,7 @@ EventToCore(InternalEvent *event, xEvent *core)
                 core->u.keyButtonPointer.rootX = e->root_x;
                 core->u.keyButtonPointer.rootY = e->root_y;
                 core->u.keyButtonPointer.state = e->corestate;
+                core->u.keyButtonPointer.root = e->root;
                 EventSetKeyRepeatFlag(core, (e->type == ET_KeyPress && e->key_repeat));
             }
             break;
@@ -253,7 +263,7 @@ eventToKeyButtonPointer(DeviceEvent *ev, xEvent **xi, int *count)
     num_events = (countValuators(ev, &first) + 5)/6; /* valuator ev */
     num_events++; /* the actual event event */
 
-    *xi = xcalloc(num_events, sizeof(xEvent));
+    *xi = calloc(num_events, sizeof(xEvent));
     if (!(*xi))
     {
         return BadAlloc;
@@ -461,7 +471,7 @@ eventToDeviceChanged(DeviceChangedEvent *dce, xEvent **xi)
         len += sizeof(CARD32) * nkeys; /* keycodes */
     }
 
-    dcce = xcalloc(1, len);
+    dcce = calloc(1, len);
     if (!dcce)
     {
         ErrorF("[Xi] BadAlloc in SendDeviceChangedEvent.\n");
@@ -544,7 +554,7 @@ eventToDeviceEvent(DeviceEvent *ev, xEvent **xi)
     vallen = bytes_to_int32(bits_to_bytes(MAX_VALUATORS));
     len += vallen * 4; /* valuators mask */
 
-    *xi = xcalloc(1, len);
+    *xi = calloc(1, len);
     xde = (xXIDeviceEvent*)*xi;
     xde->type           = GenericEvent;
     xde->extension      = IReqCode;
@@ -611,7 +621,7 @@ eventToRawEvent(RawDeviceEvent *ev, xEvent **xi)
     vallen = bytes_to_int32(bits_to_bytes(MAX_VALUATORS));
     len += vallen * 4; /* valuators mask */
 
-    *xi = xcalloc(1, len);
+    *xi = calloc(1, len);
     raw = (xXIRawEvent*)*xi;
     raw->type           = GenericEvent;
     raw->extension      = IReqCode;

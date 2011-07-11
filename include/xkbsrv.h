@@ -275,10 +275,12 @@ typedef struct
 	device->public.realInputProc = oldprocs->realInputProc; \
 	device->unwrapProc = oldprocs->unwrapProc;
 
-extern _X_EXPORT DevPrivateKey xkbDevicePrivateKey;
+extern _X_EXPORT DevPrivateKeyRec xkbDevicePrivateKeyRec;
+#define xkbDevicePrivateKey (&xkbDevicePrivateKeyRec)
+
 #define XKBDEVICEINFO(dev) ((xkbDeviceInfoPtr)dixLookupPrivate(&(dev)->devPrivates, xkbDevicePrivateKey))
 
-extern _X_EXPORT void xkbUnwrapProc(DeviceIntPtr, DeviceHandleProc, pointer);
+extern void xkbUnwrapProc(DeviceIntPtr, DeviceHandleProc, pointer);
 
 /***====================================================================***/
 
@@ -299,12 +301,6 @@ extern _X_EXPORT char *	XkbBinDirectory;
 
 extern _X_EXPORT CARD32	xkbDebugFlags;
 
-#define	_XkbTypedAlloc(t)	((t *)xalloc(sizeof(t)))
-#define	_XkbTypedCalloc(n,t)	((t *)Xcalloc((n)*sizeof(t)))
-#define	_XkbTypedRealloc(o,n,t) \
-	((o)?(t *)Xrealloc((o),(n)*sizeof(t)):_XkbTypedCalloc(n,t))
-#define	_XkbClearElems(a,f,l,t)	bzero(&(a)[f],((l)-(f)+1)*sizeof(t))
-
 #define	_XkbLibError(c,l,d) /* Epoch fail */
 #define	_XkbErrCode2(a,b) ((XID)((((unsigned int)(a))<<24)|((b)&0xffffff)))
 #define	_XkbErrCode3(a,b,c)	_XkbErrCode2(a,(((unsigned int)(b))<<16)|(c))
@@ -313,19 +309,7 @@ extern _X_EXPORT CARD32	xkbDebugFlags;
 extern	_X_EXPORT int	DeviceKeyPress,DeviceKeyRelease,DeviceMotionNotify;
 extern	_X_EXPORT int	DeviceButtonPress,DeviceButtonRelease;
 
-#define	_XkbIsPressEvent(t)	(((t)==KeyPress)||((t)==DeviceKeyPress))
-#define	_XkbIsReleaseEvent(t)	(((t)==KeyRelease)||((t)==DeviceKeyRelease))
-
-#define	XConvertCase(s,l,u)	XkbConvertCase(s,l,u)
-#undef	IsKeypadKey
-#define	IsKeypadKey(s)		XkbKSIsKeypad(s)
-
 #define	Status		int
-
-#ifndef True
-#define	True	TRUE
-#define	False	FALSE
-#endif
 
 extern _X_EXPORT void XkbUseMsg(
     void
@@ -336,6 +320,8 @@ extern _X_EXPORT int XkbProcessArguments(
     char **			/* argv */,
     int				/* i */
 );
+
+extern _X_EXPORT Bool   XkbInitPrivates(void);
 
 extern _X_EXPORT void	XkbSetExtension(DeviceIntPtr device, ProcessInputProc proc);
 
@@ -786,18 +772,6 @@ extern _X_EXPORT void XkbDDXUpdateDeviceIndicators(
 	CARD32			/* newState */
 );
 
-extern _X_EXPORT void XkbDDXFakePointerMotion(
- 	unsigned int	/* flags */,
-	int		/* x */,
-	int		/* y */
-);
-
-extern _X_EXPORT void XkbDDXFakeDeviceButton(
-	DeviceIntPtr	/* dev */,
-	Bool		/* press */,
-	int		/* button */
-);
-
 extern _X_EXPORT int XkbDDXTerminateServer(
 	DeviceIntPtr	/* dev */,
 	KeyCode		/* key */,
@@ -936,7 +910,7 @@ extern Bool XkbCopyKeymap(
         XkbDescPtr              /* dst */,
         XkbDescPtr              /* src */);
 
-extern Bool XkbCopyDeviceKeymap(
+extern _X_EXPORT Bool XkbCopyDeviceKeymap(
         DeviceIntPtr            /* dst */,
         DeviceIntPtr            /* src */);
 
@@ -949,6 +923,15 @@ extern int XkbGetEffectiveGroup(
         XkbSrvInfoPtr           /* xkbi */,
         XkbStatePtr             /* xkbstate */,
         CARD8                   /* keycode */);
+
+extern void XkbMergeLockedPtrBtns(
+        DeviceIntPtr            /* master */);
+
+extern void XkbFakeDeviceButton(
+        DeviceIntPtr            /* dev */,
+        int                     /* press */,
+        int                     /* button */);
+
 
 #include "xkbfile.h"
 #include "xkbrules.h"
@@ -999,7 +982,5 @@ extern _X_EXPORT XkbDescPtr XkbCompileKeymap(
         DeviceIntPtr    /* dev */,
         XkbRMLVOSet *   /* rmlvo */
 );
-
-#define	XkbAtomGetString(s)	NameForAtom(s)
 
 #endif /* _XKBSRV_H_ */

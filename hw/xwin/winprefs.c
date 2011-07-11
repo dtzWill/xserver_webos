@@ -672,8 +672,7 @@ winOverrideIcon (unsigned long longWin)
       {
 	free (res_name);
 	free (res_class);
-	if (wmName)
-	  free (wmName);
+	free(wmName);
 
 	if (pref.icon[i].hicon)
 	  return pref.icon[i].hicon;
@@ -691,8 +690,7 @@ winOverrideIcon (unsigned long longWin)
   /* Didn't find the icon, fail gracefully */
   free (res_name);
   free (res_class);
-  if (wmName)
-    free (wmName);
+  free(wmName);
 
   return 0;
 }
@@ -723,7 +721,7 @@ winIconIsOverride(unsigned hiconIn)
 
 
 /*
- * Try and open ~/.XWinrc and /usr/X11R6/lib/X11/system.XWinrc
+ * Try and open ~/.XWinrc and system.XWinrc
  * Load it into prefs structure for use by other functions
  */
 void
@@ -763,7 +761,7 @@ LoadPreferences (void)
 #ifdef RELOCATE_PROJECTROOT
       snprintf(buffer, sizeof(buffer), "%s\\system.XWinrc", winGetBaseDir());
 #else
-      strncpy(buffer, PROJECTROOT"/lib/X11/system.XWinrc", sizeof(buffer));
+      strncpy(buffer, SYSCONFDIR"/X11/system.XWinrc", sizeof(buffer));
 #endif
       buffer[sizeof(buffer)-1] = 0;
       prefFile = fopen (buffer, "r");
@@ -849,8 +847,7 @@ winOverrideStyle (unsigned long longpWin)
       {
 	free (res_name);
 	free (res_class);
-	if (wmName)
-	  free (wmName);
+	free(wmName);
 
 	if (pref.style[i].type)
 	  return pref.style[i].type;
@@ -860,8 +857,7 @@ winOverrideStyle (unsigned long longpWin)
   /* Didn't find the style, fail gracefully */
   free (res_name);
   free (res_class);
-  if (wmName)
-    free (wmName);
+  free(wmName);
 
   return STYLE_NONE;
 }

@@ -136,10 +136,12 @@ xf86ModeBandwidth(DisplayModePtr mode, int depth)
 void
 xf86SetModeDefaultName(DisplayModePtr mode)
 {
-    if (mode->name != NULL)
-	xfree(mode->name);
+    Bool interlaced = !!(mode->Flags & V_INTERLACE);
 
-    mode->name = XNFprintf("%dx%d", mode->HDisplay, mode->VDisplay);
+    free(mode->name);
+
+    mode->name = XNFprintf("%dx%d%s", mode->HDisplay, mode->VDisplay,
+			   interlaced ? "i" : "");
 }
 
 /*
@@ -322,7 +324,7 @@ xf86PrintModeline(int scrnIndex,DisplayModePtr mode)
 		   mode->HSyncStart, mode->HSyncEnd, mode->HTotal,
 		   mode->VDisplay, mode->VSyncStart, mode->VSyncEnd,
 		   mode->VTotal, flags, xf86ModeHSync(mode));
-    xfree(flags);
+    free(flags);
 }
 #endif /* XORG_VERSION_CURRENT <= 7.2.99.2 */
 
@@ -605,13 +607,13 @@ xf86GetConfigModes (XF86ConfModeLinePtr conf_mode)
     
     for (; conf_mode; conf_mode = (XF86ConfModeLinePtr) conf_mode->list.next)
     {
-        mode = xcalloc(1, sizeof(DisplayModeRec));
+        mode = calloc(1, sizeof(DisplayModeRec));
 	if (!mode)
 	    continue;
         mode->name       = xstrdup(conf_mode->ml_identifier);
 	if (!mode->name)
 	{
-	    xfree (mode);
+	    free(mode);
 	    continue;
 	}
 	mode->type       = 0;
@@ -688,4 +690,38 @@ xf86GetDefaultModes (void)
 	head = xf86ModesAdd(head, mode);
     }
     return head;
+}
+
+/*
+ * Walk a mode list and prune out duplicates.  Will preserve the preferred
+ * mode of an otherwise-duplicate pair.
+ *
+ * Probably best to call this on lists that are all of a single class
+ * (driver, default, user, etc.), otherwise, which mode gets deleted is
+ * not especially well defined.
+ *
+ * Returns the new list.
+ */
+
+DisplayModePtr
+xf86PruneDuplicateModes(DisplayModePtr modes)
+{
+    DisplayModePtr m, n, o;
+
+top:
+    for (m = modes; m; m = m->next) {
+	for (n = m->next; n; n = o) {
+	    o = n->next;
+	    if (xf86ModesEqual(m, n)) {
+		if (n->type & M_T_PREFERRED) {
+		    xf86DeleteMode(&modes, m);
+		    goto top;
+		}
+		else
+		    xf86DeleteMode(&modes, n);
+	    }
+	}
+    }
+
+    return modes;
 }

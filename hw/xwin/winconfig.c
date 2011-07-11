@@ -50,6 +50,13 @@
                     "%P/lib/X11/%X.%H," "%P/lib/X11/%X-%M," \
                     "%P/lib/X11/%X"
 #endif
+#ifndef CONFIGDIRPATH
+#define CONFIGDIRPATH  "/etc/X11/%X-%M," "/etc/X11/%X," "/etc/%X," \
+                       "%P/etc/X11/%X.%H," "%P/etc/X11/%X-%M," \
+                       "%P/etc/X11/%X," \
+                       "%P/lib/X11/%X.%H," "%P/lib/X11/%X-%M," \
+                       "%P/lib/X11/%X"
+#endif
 
 XF86ConfigPtr g_xf86configptr = NULL;
 #endif
@@ -57,6 +64,7 @@ XF86ConfigPtr g_xf86configptr = NULL;
 WinCmdlineRec g_cmdline = {
 #ifdef XWIN_XF86CONFIG
   NULL,				/* configFile */
+  NULL,				/* configDir */
 #endif
   NULL,				/* fontPath */
 #ifdef XWIN_XF86CONFIG
@@ -109,20 +117,28 @@ Bool
 winReadConfigfile ()
 {
   Bool		retval = TRUE;
-  const char	*filename;
-  MessageType	from = X_DEFAULT;
+  const char	*filename, *dirname;
+  MessageType	filefrom = X_DEFAULT;
+  MessageType	dirfrom = X_DEFAULT;
   char		*xf86ConfigFile = NULL;
+  char		*xf86ConfigDir = NULL;
 
   if (g_cmdline.configFile)
     {
-      from = X_CMDLINE;
+      filefrom = X_CMDLINE;
       xf86ConfigFile = g_cmdline.configFile;
+    }
+  if (g_cmdline.configDir)
+    {
+      dirfrom = X_CMDLINE;
+      xf86ConfigDir = g_cmdline.configDir;
     }
 
   /* Parse config file into data structure */
-
+  xf86initConfigFiles();
+  dirname = xf86openConfigDirFiles (CONFIGDIRPATH, xf86ConfigDir, PROJECTROOT);
   filename = xf86openConfigFile (CONFIGPATH, xf86ConfigFile, PROJECTROOT);
-    
+
   /* Hack for backward compatibility */
   if (!filename && from == X_DEFAULT)
     filename = xf86openConfigFile (CONFIGPATH, "XF86Config", PROJECTROOT);
@@ -137,6 +153,20 @@ winReadConfigfile ()
       if (xf86ConfigFile)
 	ErrorF (": \"%s\"", xf86ConfigFile);
       ErrorF ("\n");
+    }
+  if (dirname)
+    {
+      winMsg (from, "Using config directory: \"%s\"\n", dirname);
+    }
+  else
+    {
+      winMsg (X_ERROR, "Unable to locate/open config directory");
+      if (xf86ConfigDir)
+	ErrorF (": \"%s\"", xf86ConfigDir);
+      ErrorF ("\n");
+    }
+  if (!filename && !dirname)
+    {
       return FALSE;
     }
   if ((g_xf86configptr = xf86readConfigFile ()) == NULL)
@@ -300,7 +330,7 @@ winConfigKeyboard (DeviceIntPtr pDevice)
         const char          regtempl[] = 
           "SYSTEM\\CurrentControlSet\\Control\\Keyboard Layouts\\";
         char                *regpath;
-        char                lname[256];
+        unsigned char       lname[256];
         DWORD               namesize = sizeof(lname);
 
         regpath = malloc(sizeof(regtempl) + KL_NAMELENGTH + 1);
@@ -363,10 +393,10 @@ winConfigKeyboard (DeviceIntPtr pDevice)
                   (1000 / g_winInfo.keyboard.rate) < 1) 
             {
               winErrorFVerb (2, "\"%s\" is not a valid AutoRepeat value", s);
-              xfree(s);
+              free(s);
               return FALSE;
             }
-          xfree(s);
+          free(s);
           winMsg (X_CONFIG, "AutoRepeat: %ld %ld\n", 
                   g_winInfo.keyboard.delay, g_winInfo.keyboard.rate);
         }
@@ -553,7 +583,7 @@ winConfigFiles ()
   else if (filesptr != NULL && filesptr->file_fontpath)
     {
       from = X_CONFIG;
-      defaultFontPath = xstrdup (filesptr->file_fontpath);
+      defaultFontPath = strdup (filesptr->file_fontpath);
     }
   winMsg (from, "FontPath set to \"%s\"\n", defaultFontPath);
 
@@ -600,7 +630,7 @@ winSetStrOption (pointer optlist, const char *name, char *deflt)
   if (ParseOptionValue (-1, optlist, &o))
     deflt = o.value.str;
   if (deflt)
-    return xstrdup (deflt);
+    return strdup (deflt);
   else
     return NULL;
 }
@@ -639,6 +669,18 @@ winSetRealOption (pointer optlist, const char *name, double deflt)
 
   o.name = name;
   o.type = OPTV_REAL;
+  if (ParseOptionValue (-1, optlist, &o))
+    deflt = o.value.realnum;
+  return deflt;
+}
+
+double
+winSetPercentOption (pointer optlist, const char *name, double deflt)
+{
+  OptionInfoRec o;
+
+  o.name = name;
+  o.type = OPTV_PERCENT;
   if (ParseOptionValue (-1, optlist, &o))
     deflt = o.value.realnum;
   return deflt;
@@ -688,7 +730,7 @@ winNameCompare (const char *s1, const char *s2)
       c1 = (isupper (*s1) ? tolower (*s1) : *s1);
       c2 = (isupper (*s2) ? tolower (*s2) : *s2);
     }
-  return (c1 - c2);
+  return c1 - c2;
 }
 
 
@@ -723,11 +765,11 @@ winFindOptionValue (XF86OptionPtr list, const char *name)
   if (list)
     {
       if (list->opt_val)
-	return (list->opt_val);
+	return list->opt_val;
       else
 	return "";
     }
-  return (NULL);
+  return NULL;
 }
 
 
@@ -821,6 +863,31 @@ ParseOptionValue (int scrnIndex, pointer options, OptionInfoPtr p)
 	      p->found = FALSE;
 	    }
 	  break;
+	case OPTV_PERCENT:
+	  if (*s == '\0')
+	    {
+	      winDrvMsg (scrnIndex, X_WARNING,
+			 "Option \"%s\" requires a percent value\n",
+			 p->name);
+	      p->found = FALSE;
+	    }
+	  else
+	    {
+	       double percent = strtod (s, &end);
+
+	       if (end != s && winNameCompare (end, "%"))
+		 {
+		   p->found = TRUE;
+		   p->value.realnum = percent;
+		 }
+	       else
+		 {
+		   winDrvMsg (scrnIndex, X_WARNING,
+			      "Option \"%s\" requires a frequency value\n",
+			       p->name);
+		   p->found = FALSE;
+		 }
+	    }
 	case OPTV_FREQ:
 	  if (*s == '\0')
 	    {

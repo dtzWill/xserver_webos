@@ -93,6 +93,17 @@ static struct dev_properties
     {0, AXIS_LABEL_PROP_ABS_TILT_Y},
     {0, AXIS_LABEL_PROP_ABS_TOOL_WIDTH},
     {0, AXIS_LABEL_PROP_ABS_VOLUME},
+    {0, AXIS_LABEL_PROP_ABS_MT_TOUCH_MAJOR},
+    {0, AXIS_LABEL_PROP_ABS_MT_TOUCH_MINOR},
+    {0, AXIS_LABEL_PROP_ABS_MT_WIDTH_MAJOR},
+    {0, AXIS_LABEL_PROP_ABS_MT_WIDTH_MINOR},
+    {0, AXIS_LABEL_PROP_ABS_MT_ORIENTATION},
+    {0, AXIS_LABEL_PROP_ABS_MT_POSITION_X},
+    {0, AXIS_LABEL_PROP_ABS_MT_POSITION_Y},
+    {0, AXIS_LABEL_PROP_ABS_MT_TOOL_TYPE},
+    {0, AXIS_LABEL_PROP_ABS_MT_BLOB_ID},
+    {0, AXIS_LABEL_PROP_ABS_MT_TRACKING_ID},
+    {0, AXIS_LABEL_PROP_ABS_MT_PRESSURE},
     {0, AXIS_LABEL_PROP_ABS_MISC},
 
     {0, BTN_LABEL_PROP},
@@ -166,7 +177,9 @@ static struct dev_properties
     {0, BTN_LABEL_PROP_BTN_TOOL_TRIPLETAP},
 
     {0, BTN_LABEL_PROP_BTN_GEAR_DOWN},
-    {0, BTN_LABEL_PROP_BTN_GEAR_UP}
+    {0, BTN_LABEL_PROP_BTN_GEAR_UP},
+
+    {0, XI_PROP_TRANSFORM}
 };
 
 static long XIPropHandlerID = 1;
@@ -214,7 +227,7 @@ static int list_atoms(DeviceIntPtr dev, int *natoms, Atom **atoms_return)
     {
         Atom *a;
 
-        atoms = xalloc(nprops * sizeof(Atom));
+        atoms = malloc(nprops * sizeof(Atom));
         if(!atoms)
             return BadAlloc;
         a = atoms;
@@ -241,18 +254,18 @@ get_property(ClientPtr client, DeviceIntPtr dev, Atom property, Atom type,
     if (!ValidAtom(property))
     {
         client->errorValue = property;
-        return(BadAtom);
+        return BadAtom;
     }
     if ((delete != xTrue) && (delete != xFalse))
     {
         client->errorValue = delete;
-        return(BadValue);
+        return BadValue;
     }
 
     if ((type != AnyPropertyType) && !ValidAtom(type))
     {
         client->errorValue = type;
-        return(BadAtom);
+        return BadAtom;
     }
 
     for (prop = dev->properties.properties; prop; prop = prop->next)
@@ -337,12 +350,12 @@ check_change_property(ClientPtr client, Atom property, Atom type, int format,
     if (!ValidAtom(property))
     {
         client->errorValue = property;
-        return(BadAtom);
+        return BadAtom;
     }
     if (!ValidAtom(type))
     {
         client->errorValue = type;
-        return(BadAtom);
+        return BadAtom;
     }
 
     return Success;
@@ -392,6 +405,15 @@ XIGetKnownProperty(char *name)
     return 0;
 }
 
+void
+XIResetProperties(void)
+{
+    int i;
+
+    for (i = 0; i < (sizeof(dev_properties)/sizeof(struct dev_properties)); i++)
+        dev_properties[i].type = None;
+}
+
 /**
  * Convert the given property's value(s) into @nelem_return integer values and
  * store them in @buf_return. If @nelem_return is larger than the number of
@@ -437,7 +459,7 @@ XIPropToInt(XIPropertyValuePtr val, int *nelem_return, int **buf_return)
 
     if (!buf && !(*nelem_return))
     {
-        buf = xcalloc(val->size, sizeof(int));
+        buf = calloc(val->size, sizeof(int));
         if (!buf)
             return BadAlloc;
         *buf_return = buf;
@@ -497,7 +519,7 @@ XIPropToFloat(XIPropertyValuePtr val, int *nelem_return, float **buf_return)
 
     if (!buf && !(*nelem_return))
     {
-        buf = xcalloc(val->size, sizeof(float));
+        buf = calloc(val->size, sizeof(float));
         if (!buf)
             return BadAlloc;
         *buf_return = buf;
@@ -529,7 +551,7 @@ XIRegisterPropertyHandler(DeviceIntPtr         dev,
 {
     XIPropertyHandlerPtr new_handler;
 
-    new_handler = xcalloc(1, sizeof(XIPropertyHandler));
+    new_handler = calloc(1, sizeof(XIPropertyHandler));
     if (!new_handler)
         return 0;
 
@@ -563,7 +585,7 @@ XIUnregisterPropertyHandler(DeviceIntPtr dev, long id)
     else
         prev->next = curr->next;
 
-    xfree(curr);
+    free(curr);
 }
 
 static XIPropertyPtr
@@ -571,7 +593,7 @@ XICreateDeviceProperty (Atom property)
 {
     XIPropertyPtr   prop;
 
-    prop = (XIPropertyPtr)xalloc(sizeof(XIPropertyRec));
+    prop = (XIPropertyPtr)malloc(sizeof(XIPropertyRec));
     if (!prop)
         return NULL;
 
@@ -600,9 +622,8 @@ XIFetchDeviceProperty(DeviceIntPtr dev, Atom property)
 static void
 XIDestroyDeviceProperty (XIPropertyPtr prop)
 {
-    if (prop->value.data)
-        xfree(prop->value.data);
-    xfree(prop);
+    free(prop->value.data);
+    free(prop);
 }
 
 /* This function destroys all of the device's property-related stuff,
@@ -622,14 +643,18 @@ XIDeleteAllDeviceProperties (DeviceIntPtr device)
         XIDestroyDeviceProperty(prop);
     }
 
+    device->properties.properties = NULL;
+
     /* Now free all handlers */
     curr_handler = device->properties.handlers;
     while(curr_handler)
     {
         next_handler = curr_handler->next;
-        xfree(curr_handler);
+        free(curr_handler);
         curr_handler = next_handler;
     }
+
+    device->properties.handlers = NULL;
 }
 
 
@@ -643,6 +668,9 @@ XIDeleteDeviceProperty (DeviceIntPtr device, Atom property, Bool fromClient)
         if (prop->propertyName == property)
             break;
 
+    if (!prop)
+        return Success;
+
     if (fromClient && !prop->deletable)
         return BadAccess;
 
@@ -655,7 +683,7 @@ XIDeleteDeviceProperty (DeviceIntPtr device, Atom property, Bool fromClient)
             if (handler->DeleteProperty)
                 rc = handler->DeleteProperty(device, prop->propertyName);
             if (rc != Success)
-                return (rc);
+                return rc;
             handler = handler->next;
         }
     }
@@ -692,7 +720,7 @@ XIChangeDeviceProperty (DeviceIntPtr dev, Atom property, Atom type,
     {
         prop = XICreateDeviceProperty (property);
         if (!prop)
-            return(BadAlloc);
+            return BadAlloc;
         add = TRUE;
         mode = PropModeReplace;
     }
@@ -704,9 +732,9 @@ XIChangeDeviceProperty (DeviceIntPtr dev, Atom property, Atom type,
      "PropModeReplace" since they will be written over. */
 
     if ((format != prop_value->format) && (mode != PropModeReplace))
-        return(BadMatch);
+        return BadMatch;
     if ((prop_value->type != type) && (mode != PropModeReplace))
-        return(BadMatch);
+        return BadMatch;
     new_value = *prop_value;
     if (mode == PropModeReplace)
         total_len = len;
@@ -718,7 +746,7 @@ XIChangeDeviceProperty (DeviceIntPtr dev, Atom property, Atom type,
         pointer            new_data = NULL, old_data = NULL;
 
         total_size = total_len * size_in_bytes;
-        new_value.data = (pointer)xalloc (total_size);
+        new_value.data = (pointer)malloc(total_size);
         if (!new_value.data && total_size)
         {
             if (add)
@@ -769,9 +797,8 @@ XIChangeDeviceProperty (DeviceIntPtr dev, Atom property, Atom type,
                                 &new_value, checkonly);
                         if (checkonly && rc != Success)
                         {
-                            if (new_value.data)
-                                xfree (new_value.data);
-                            return (rc);
+                            free(new_value.data);
+                            return rc;
                         }
                     }
                     handler = handler->next;
@@ -779,8 +806,7 @@ XIChangeDeviceProperty (DeviceIntPtr dev, Atom property, Atom type,
                 checkonly = !checkonly;
             } while (!checkonly);
         }
-        if (prop_value->data)
-            xfree (prop_value->data);
+        free(prop_value->data);
         *prop_value = new_value;
     } else if (len == 0)
     {
@@ -797,7 +823,7 @@ XIChangeDeviceProperty (DeviceIntPtr dev, Atom property, Atom type,
         send_property_event(dev, prop->propertyName,
                             (add) ?  XIPropertyCreated : XIPropertyModified);
 
-    return(Success);
+    return Success;
 }
 
 int
@@ -878,7 +904,7 @@ ProcXListDeviceProperties (ClientPtr client)
     {
         client->pSwapReplyFunc = (ReplySwapPtr)Swap32Write;
         WriteSwappedDataToClient(client, natoms * sizeof(Atom), atoms);
-        xfree(atoms);
+        free(atoms);
     }
     return rc;
 }
@@ -930,7 +956,7 @@ ProcXDeleteDeviceProperty (ClientPtr client)
     if (!ValidAtom(stuff->property))
     {
         client->errorValue = stuff->property;
-        return (BadAtom);
+        return BadAtom;
     }
 
     rc = XIDeleteDeviceProperty(dev, stuff->property, TRUE);
@@ -1122,7 +1148,7 @@ ProcXIListProperties(ClientPtr client)
     {
         client->pSwapReplyFunc = (ReplySwapPtr)Swap32Write;
         WriteSwappedDataToClient(client, natoms * sizeof(Atom), atoms);
-        xfree(atoms);
+        free(atoms);
     }
     return rc;
 }
@@ -1173,7 +1199,7 @@ ProcXIDeleteProperty(ClientPtr client)
     if (!ValidAtom(stuff->property))
     {
         client->errorValue = stuff->property;
-        return (BadAtom);
+        return BadAtom;
     }
 
     rc = XIDeleteDeviceProperty(dev, stuff->property, TRUE);

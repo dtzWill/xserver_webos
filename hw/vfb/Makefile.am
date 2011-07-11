@@ -9,7 +9,6 @@ AM_CFLAGS = -DHAVE_DIX_CONFIG_H \
 
 SRCS =	InitInput.c \
 	InitOutput.c \
-	lk201kbd.h \
 	$(top_srcdir)/Xext/dpmsstubs.c \
 	$(top_srcdir)/Xi/stubs.c \
 	$(top_srcdir)/mi/miinitext.c
@@ -43,10 +42,10 @@ CLEANFILES = $(appman_PRE) $(appman_DATA)
 SUFFIXES += .$(APP_MAN_SUFFIX) .man
 
 .man.$(APP_MAN_SUFFIX):
-	-rm -f $@
-	$(LN_S) $< $@
+	-$(AM_V_at)rm -f $@
+	$(AM_V_at)$(LN_S) $< $@
 
 EXTRA_DIST = Xvfb.man.pre
 
 relink:
-	rm -f Xvfb && $(MAKE) Xvfb
+	$(AM_V_at)rm -f Xvfb$(EXEEXT) && $(MAKE) Xvfb$(EXEEXT)

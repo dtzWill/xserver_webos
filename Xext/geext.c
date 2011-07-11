@@ -36,14 +36,9 @@
 
 #define rClient(obj) (clients[CLIENT_ID((obj)->resource)])
 
-int GEEventBase;
-int GEErrorBase;
-static int GEClientPrivateKeyIndex;
-DevPrivateKey GEClientPrivateKey = &GEClientPrivateKeyIndex;
-int GEEventType; /* The opcode for all GenericEvents will have. */
+DevPrivateKeyRec GEClientPrivateKeyRec;
 
 int RT_GECLIENT  = 0;
-
 
 GEExtension GEExtensions[MAXEXTENSIONS];
 
@@ -94,7 +89,7 @@ ProcGEQueryVersion(ClientPtr client)
     }
 
     WriteToClient(client, sizeof(xGEQueryVersionReply), (char*)&rep);
-    return(client->noClientException);
+    return Success;
 }
 
 int (*ProcGEVector[GENumberRequests])(ClientPtr) = {
@@ -168,12 +163,6 @@ GEClientCallback(CallbackListPtr *list,
     ClientPtr		pClient = clientinfo->client;
     GEClientInfoPtr     pGEClient = GEGetClient(pClient);
 
-    if (pGEClient == NULL)
-    {
-        pGEClient = xcalloc(1, sizeof(GEClientInfoRec));
-        dixSetPrivate(&pClient->devPrivates, GEClientPrivateKey, pGEClient);
-    }
-
     pGEClient->major_version = 0;
     pGEClient->minor_version = 0;
 }
@@ -184,10 +173,6 @@ GEResetProc(ExtensionEntry *extEntry)
 {
     DeleteCallback(&ClientStateCallback, GEClientCallback, 0);
     EventSwapVector[GenericEvent] = NotImplemented;
-
-    GEEventBase = 0;
-    GEErrorBase = 0;
-    GEEventType = 0;
 }
 
 /*  Calls the registered event swap function for the extension.
@@ -222,20 +207,19 @@ GEExtensionInit(void)
 {
     ExtensionEntry *extEntry;
 
+    if (!dixRegisterPrivateKey(&GEClientPrivateKeyRec, PRIVATE_CLIENT, sizeof(GEClientInfoRec)))
+        FatalError("GEExtensionInit: GE private request failed.\n");
+
     if(!AddCallback(&ClientStateCallback, GEClientCallback, 0))
     {
         FatalError("GEExtensionInit: register client callback failed.\n");
     }
 
     if((extEntry = AddExtension(GE_NAME,
-                        GENumberEvents, GENumberErrors,
+                        0, GENumberErrors,
                         ProcGEDispatch, SProcGEDispatch,
                         GEResetProc, StandardMinorOpcode)) != 0)
     {
-        GEEventBase = extEntry->eventBase;
-        GEErrorBase = extEntry->errorBase;
-        GEEventType = GEEventBase;
-
         memset(GEExtensions, 0, sizeof(GEExtensions));
 
         EventSwapVector[GenericEvent] = (EventSwapPtr) SGEGenericEvent;

@@ -73,10 +73,16 @@ extern int noPanoramiXExtension;
 #define XSERVER_VERSION "?"
 #endif
 
-const int __crashreporter_info__len = 4096;
-const char *__crashreporter_info__base = "X.Org X Server " XSERVER_VERSION " Build Date: " BUILD_DATE;
-char __crashreporter_info__buf[4096];
-char *__crashreporter_info__ = __crashreporter_info__buf;
+static char __crashreporter_info_buff__[4096] = {0};
+static const char *__crashreporter_info__ __attribute__((__used__)) = &__crashreporter_info_buff__[0];
+#if MAC_OS_X_VERSION_MIN_REQUIRED >= 1050
+// This is actually a toolchain requirement, but I'm not sure the correct check,
+// but it should be fine to just only include it for Leopard and later.  This line
+// just tells the linker to never strip this symbol (such as for space optimization)
+asm (".desc ___crashreporter_info__, 0x10");
+#endif
+
+static const char *__crashreporter_info__base = "X.Org X Server " XSERVER_VERSION " Build Date: " BUILD_DATE;
 
 static char *launchd_id_prefix = NULL;
 static char *server_bootstrap_name = NULL;
@@ -333,8 +339,10 @@ kern_return_t do_start_x11_server(mach_port_t port, string_array_t argv,
     /* If we didn't get handed a launchd DISPLAY socket, we should
      * unset DISPLAY or we can run into problems with pbproxy
      */
-    if(!launchd_socket_handed_off)
+    if(!launchd_socket_handed_off) {
+        fprintf(stderr, "X11.app: No launchd socket handed off, unsetting DISPLAY\n");
         unsetenv("DISPLAY");
+    }
     
     if(!_argv || !_envp) {
         return KERN_FAILURE;
@@ -473,7 +481,7 @@ static void setup_env(void) {
 
     server_bootstrap_name = malloc(sizeof(char) * (strlen(pds) + 1));
     if(!server_bootstrap_name) {
-        fprintf(stderr, "Memory allocation error.\n");
+        fprintf(stderr, "X11.app: Memory allocation error.\n");
         exit(1);
     }
     strcpy(server_bootstrap_name, pds);
@@ -482,7 +490,7 @@ static void setup_env(void) {
     len = strlen(server_bootstrap_name);
     launchd_id_prefix = malloc(sizeof(char) * (len - 3));
     if(!launchd_id_prefix) {
-        fprintf(stderr, "Memory allocation error.\n");
+        fprintf(stderr, "X11.app: Memory allocation error.\n");
         exit(1);
     }
     strlcpy(launchd_id_prefix, server_bootstrap_name, len - 3);
@@ -497,21 +505,27 @@ static void setup_env(void) {
         }
 
         if(s && *s) {
-            temp = (char *)malloc(sizeof(char) * len);
-            if(!temp) {
-                fprintf(stderr, "Memory allocation error creating space for socket name test.\n");
-                exit(1);
-            }
-            strlcpy(temp, launchd_id_prefix, len);
-            strlcat(temp, ":0", len);
+            if(strcmp(launchd_id_prefix, "org.x") == 0 && strcmp(s, ":0") == 0) {
+                fprintf(stderr, "X11.app: Detected old style launchd DISPLAY, please update xinit.\n");
+            } else {
+                temp = (char *)malloc(sizeof(char) * len);
+                if(!temp) {
+                    fprintf(stderr, "X11.app: Memory allocation error creating space for socket name test.\n");
+                    exit(1);
+                }
+                strlcpy(temp, launchd_id_prefix, len);
+                strlcat(temp, ":0", len);
             
-            if(strcmp(temp, s) != 0) {
-                /* If we don't have a match, unset it. */
-                unsetenv("DISPLAY");
+                if(strcmp(temp, s) != 0) {
+                    /* If we don't have a match, unset it. */
+                    fprintf(stderr, "X11.app: DISPLAY (\"%s\") does not match our id (\"%s\"), unsetting.\n", disp, launchd_id_prefix);
+                    unsetenv("DISPLAY");
+                }
+                free(temp);
             }
-            free(temp);
         } else {
             /* The DISPLAY environment variable is not formatted like a launchd socket, so reset. */
+            fprintf(stderr, "X11.app: DISPLAY does not look like a launchd set variable, unsetting.\n");
             unsetenv("DISPLAY");
         }
     }
@@ -540,7 +554,7 @@ int main(int argc, char **argv, char **envp) {
     noPanoramiXExtension = TRUE;
 
     /* Setup the initial crasherporter info */
-    strlcpy(__crashreporter_info__, __crashreporter_info__base, __crashreporter_info__len);
+    strlcpy(__crashreporter_info_buff__, __crashreporter_info__base, sizeof(__crashreporter_info_buff__));
     
     fprintf(stderr, "X11.app: main(): argc=%d\n", argc);
     for(i=0; i < argc; i++) {
@@ -627,36 +641,52 @@ static int execute(const char *command) {
 
     execvp (newargv[0], (char * const *) newargv);
     perror ("X11.app: Couldn't exec.");
-    return(1);
+    return 1;
 }
 
 static char *command_from_prefs(const char *key, const char *default_value) {
     char *command = NULL;
     
-    CFStringRef cfKey = CFStringCreateWithCString(NULL, key, kCFStringEncodingASCII);
-    CFPropertyListRef PlistRef = CFPreferencesCopyAppValue(cfKey, kCFPreferencesCurrentApplication);
+    CFStringRef cfKey;
+    CFPropertyListRef PlistRef;
+
+    if(!key)
+        return NULL;
+
+    cfKey = CFStringCreateWithCString(NULL, key, kCFStringEncodingASCII);
+
+    if(!cfKey)
+        return NULL;
+
+    PlistRef = CFPreferencesCopyAppValue(cfKey, kCFPreferencesCurrentApplication);
     
     if ((PlistRef == NULL) || (CFGetTypeID(PlistRef) != CFStringGetTypeID())) {
         CFStringRef cfDefaultValue = CFStringCreateWithCString(NULL, default_value, kCFStringEncodingASCII);
         int len = strlen(default_value) + 1;
 
+        if(!cfDefaultValue)
+            goto command_from_prefs_out;
+
         CFPreferencesSetAppValue(cfKey, cfDefaultValue, kCFPreferencesCurrentApplication);
         CFPreferencesAppSynchronize(kCFPreferencesCurrentApplication);
+        CFRelease(cfDefaultValue);
         
         command = (char *)malloc(len * sizeof(char));
         if(!command)
-            return NULL;
+            goto command_from_prefs_out;
         strcpy(command, default_value);
     } else {
         int len = CFStringGetLength((CFStringRef)PlistRef) + 1;
         command = (char *)malloc(len * sizeof(char));
         if(!command)
-            return NULL;
+            goto command_from_prefs_out;
         CFStringGetCString((CFStringRef)PlistRef, command, len,  kCFStringEncodingASCII);
-	}
-    
+    }
+
+command_from_prefs_out:
     if (PlistRef)
         CFRelease(PlistRef);
-    
+    if(cfKey)
+        CFRelease(cfKey);
     return command;
 }

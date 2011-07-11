@@ -56,6 +56,9 @@ typedef unsigned int NSUInteger;
 #endif
 
 @interface X11Controller : NSObject
+#if MAC_OS_X_VERSION_MIN_REQUIRED >= 1060
+<NSTableViewDataSource>
+#endif
 {
     IBOutlet NSPanel *prefs_panel;
 
@@ -65,6 +68,7 @@ typedef unsigned int NSUInteger;
     IBOutlet NSButton *use_sysbeep;
     IBOutlet NSButton *enable_keyequivs;
     IBOutlet NSButton *sync_keymap;
+    IBOutlet NSButton *option_sends_alt;
     IBOutlet NSButton *click_through;
     IBOutlet NSButton *focus_follows_mouse;
     IBOutlet NSButton *focus_on_new_window;
@@ -120,6 +124,7 @@ typedef unsigned int NSUInteger;
 #endif
 - (void) set_can_quit:(OSX_BOOL)state;
 - (void) server_ready;
+- (OSX_BOOL) application:(NSApplication *)app openFile:(NSString *)filename;
 
 - (IBAction) apps_table_show:(id)sender;
 - (IBAction) apps_table_done:(id)sender;

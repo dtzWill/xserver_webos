@@ -36,6 +36,9 @@
 /* Path to configuration file. */
 #undef __XCONFIGFILE__
 
+/* Name of configuration directory. */
+#undef __XCONFIGDIR__
+
 /* Path to loadable modules. */
 #undef DEFAULT_MODULE_PATH
 
@@ -132,5 +135,11 @@
 
 /* Use SIGIO handlers for input device events by default */
 #undef USE_SIGIO_BY_DEFAULT
+
+/* Support PC98 */
+#undef SUPPORT_PC98
+
+/* Build with libdrm support */
+#undef WITH_LIBDRM
 
 #endif /* _XORG_CONFIG_H_ */

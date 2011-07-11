@@ -51,17 +51,13 @@
 #define SERVER_DMX_MINOR_VERSION		2
 #define SERVER_DMX_PATCH_VERSION		20040604
 
-/* DRI2 */
-#define SERVER_DRI2_MAJOR_VERSION		1
-#define SERVER_DRI2_MINOR_VERSION		1
-
 /* Generic event extension */
 #define SERVER_GE_MAJOR_VERSION                 1
 #define SERVER_GE_MINOR_VERSION                 0
 
 /* GLX */
 #define SERVER_GLX_MAJOR_VERSION		1
-#define SERVER_GLX_MINOR_VERSION		2
+#define SERVER_GLX_MINOR_VERSION		4
 
 /* Xinerama */
 #define SERVER_PANORAMIX_MAJOR_VERSION          1
@@ -77,7 +73,7 @@
 
 /* Render */
 #define SERVER_RENDER_MAJOR_VERSION		0
-#define SERVER_RENDER_MINOR_VERSION		10
+#define SERVER_RENDER_MINOR_VERSION		11
 
 /* RandR Xinerama */
 #define SERVER_RRXINERAMA_MAJOR_VERSION		1

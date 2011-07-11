@@ -28,9 +28,7 @@ THE USE OR PERFORMANCE OF THIS SOFTWARE.
 #include <dix-config.h>
 #endif
 
-#ifdef HAVE_XKB_CONFIG_H
 #include <xkb-config.h>
-#endif
 
 #include <stdio.h>
 #include <ctype.h>
@@ -105,7 +103,7 @@ Win32System(const char *cmdline)
     STARTUPINFO si;
     PROCESS_INFORMATION pi;
     DWORD dwExitCode;
-    char *cmd = xstrdup(cmdline);
+    char *cmd = strdup(cmdline);
 
     ZeroMemory( &si, sizeof(si) );
     si.cb = sizeof(si);
@@ -133,7 +131,7 @@ Win32System(const char *cmdline)
 	    LocalFree(buffer);
 	}
 
-	xfree(cmd);
+	free(cmd);
 	return -1;
     }
     /* Wait until child process exits. */
@@ -144,7 +142,7 @@ Win32System(const char *cmdline)
     /* Close process and thread handles. */
     CloseHandle( pi.hProcess );
     CloseHandle( pi.hThread );
-    xfree(cmd);
+    free(cmd);
 
     return dwExitCode;
 }
@@ -188,7 +186,7 @@ XkbDDXCompileKeymapByNames(	XkbDescPtr		xkb,
     char	*buf = NULL, keymap[PATH_MAX], xkm_output_dir[PATH_MAX];
 
     const char	*emptystring = "";
-    const char	*xkbbasedirflag = emptystring;
+    char *xkbbasedirflag = NULL;
     const char	*xkbbindir = emptystring;
     const char	*xkbbindirsep = emptystring;
 
@@ -232,12 +230,15 @@ XkbDDXCompileKeymapByNames(	XkbDescPtr		xkb,
 		  xkbbindir, xkbbindirsep,
 		  ( (xkbDebugFlags < 2) ? 1 :
 		    ((xkbDebugFlags > 10) ? 10 : (int)xkbDebugFlags) ),
-		  xkbbasedirflag, xkmfile,
+		  xkbbasedirflag ? xkbbasedirflag : "", xkmfile,
 		  PRE_ERROR_MSG, ERROR_PREFIX, POST_ERROR_MSG1,
 		  xkm_output_dir, keymap);
 
-    if (xkbbasedirflag != emptystring) {
-	xfree(xkbbasedirflag);
+    free(xkbbasedirflag);
+
+    if (!buf) {
+        LogMessage(X_ERROR, "XKB: Could not invoke xkbcomp: not enough memory\n");
+        return FALSE;
     }
     
 #ifndef WIN32
@@ -267,8 +268,8 @@ XkbDDXCompileKeymapByNames(	XkbDescPtr		xkb,
 		nameRtrn[nameRtrnLen-1]= '\0';
 	    }
             if (buf != NULL)
-                xfree (buf);
-	    return True;
+                free(buf);
+	    return TRUE;
 	}
 	else
 	    LogMessage(X_ERROR, "Error compiling keymap (%s)\n", keymap);
@@ -287,8 +288,8 @@ XkbDDXCompileKeymapByNames(	XkbDescPtr		xkb,
     if (nameRtrn)
 	nameRtrn[0]= '\0';
     if (buf != NULL)
-        xfree (buf);
-    return False;
+        free(buf);
+    return FALSE;
 }
 
 static FILE *
@@ -388,38 +389,38 @@ Bool		complete;
 XkbRF_RulesPtr	rules;
 
     if (!rules_name)
-	return False;
+	return FALSE;
 
     if (strlen(XkbBaseDirectory) + strlen(rules_name) + 8 > PATH_MAX) {
         LogMessage(X_ERROR, "XKB: Rules name is too long\n");
-        return False;
+        return FALSE;
     }
     sprintf(buf,"%s/rules/%s", XkbBaseDirectory, rules_name);
 
     file = fopen(buf, "r");
     if (!file) {
         LogMessage(X_ERROR, "XKB: Couldn't open rules file %s\n", buf);
-	return False;
+	return FALSE;
     }
 
     rules = XkbRF_Create();
     if (!rules) {
         LogMessage(X_ERROR, "XKB: Couldn't create rules struct\n");
 	fclose(file);
-	return False;
+	return FALSE;
     }
 
     if (!XkbRF_LoadRules(file, rules)) {
         LogMessage(X_ERROR, "XKB: Couldn't parse rules file %s\n", rules_name);
 	fclose(file);
-	XkbRF_Free(rules,True);
-	return False;
+	XkbRF_Free(rules,TRUE);
+	return FALSE;
     }
 
     memset(names, 0, sizeof(*names));
     complete = XkbRF_GetComponents(rules,defs,names);
     fclose(file);
-    XkbRF_Free(rules, True);
+    XkbRF_Free(rules, TRUE);
 
     if (!complete)
         LogMessage(X_ERROR, "XKB: Rules returned no components\n");

@@ -108,7 +108,7 @@ GetBaud (int baudrate)
 	if (baudrate == 460800)
 		return B460800;
 #endif
-	return (0);
+	return 0;
 }
 
 int
@@ -122,7 +122,7 @@ xf86OpenSerial (pointer options)
 	if (!dev)
 	{
 		xf86Msg (X_ERROR, "xf86OpenSerial: No Device specified.\n");
-		return (-1);
+		return -1;
 	}
 
 	SYSCALL (fd = open (dev, O_RDWR | O_NONBLOCK));
@@ -131,25 +131,15 @@ xf86OpenSerial (pointer options)
 		xf86Msg (X_ERROR,
 			 "xf86OpenSerial: Cannot open device %s\n\t%s.\n",
 			 dev, strerror (errno));
-		xfree(dev);
-		return (-1);
+		free(dev);
+		return -1;
 	}
 
 	if (!isatty (fd))
 	{
-#if 1
 		/* Allow non-tty devices to be opened. */
-		xfree(dev);
-		return (fd);
-#else
-		xf86Msg (X_WARNING,
-			 "xf86OpenSerial: Specified device %s is not a tty\n",
-			 dev);
-		SYSCALL (close (fd));
-		errno = EINVAL;
-		xfree(dev);
-		return (-1);
-#endif
+		free(dev);
+		return fd;
 	}
 
 	/* set up default port parameters */
@@ -171,27 +161,27 @@ xf86OpenSerial (pointer options)
 	if (xf86SetSerial (fd, options) == -1)
 	{
 		SYSCALL (close (fd));
-		xfree(dev);
-		return (-1);
+		free(dev);
+		return -1;
 	}
 
 	SYSCALL (i = fcntl (fd, F_GETFL, 0));
 	if (i == -1)
 	{
 		SYSCALL (close (fd));
-		xfree(dev);
-		return (-1);
+		free(dev);
+		return -1;
 	}
 	i &= ~O_NONBLOCK;
 	SYSCALL (i = fcntl (fd, F_SETFL, i));
 	if (i == -1)
 	{
 		SYSCALL (close (fd));
-		xfree(dev);
-		return (-1);
+		free(dev);
+		return -1;
 	}
-	xfree(dev);
-	return (fd);
+	free(dev);
+	return fd;
 }
 
 int
@@ -222,7 +212,7 @@ xf86SetSerial (int fd, pointer options)
 		{
 			xf86Msg (X_ERROR,
 				 "Invalid Option BaudRate value: %d\n", val);
-			return (-1);
+			return -1;
 		}
 	}
 
@@ -239,7 +229,7 @@ xf86SetSerial (int fd, pointer options)
 		default:
 			xf86Msg (X_ERROR,
 				 "Invalid Option StopBits value: %d\n", val);
-			return (-1);
+			return -1;
 			break;
 		}
 	}
@@ -267,7 +257,7 @@ xf86SetSerial (int fd, pointer options)
 		default:
 			xf86Msg (X_ERROR,
 				 "Invalid Option DataBits value: %d\n", val);
-			return (-1);
+			return -1;
 			break;
 		}
 	}
@@ -291,7 +281,7 @@ xf86SetSerial (int fd, pointer options)
 		{
 			xf86Msg (X_ERROR, "Invalid Option Parity value: %s\n",
 				 s);
-			return (-1);
+			return -1;
 		}
 	}
 
@@ -327,7 +317,7 @@ xf86SetSerial (int fd, pointer options)
 		{
 			xf86Msg (X_ERROR,
 				 "Invalid Option FlowControl value: %s\n", s);
-			return (-1);
+			return -1;
 		}
 	}
 
@@ -343,26 +333,21 @@ xf86SetSerial (int fd, pointer options)
 #else
 		xf86Msg (X_WARNING,
 			 "Option ClearDTR not supported on this OS\n");
-			return (-1);
+			return -1;
 #endif
 		xf86MarkOptionUsedByName (options, "ClearDTR");
 	}
 
 	if ((xf86SetBoolOption (options, "ClearRTS", FALSE)))
 	{
-#ifdef CLEARRTS_SUPPORT
-		val = TIOCM_RTS;
-		SYSCALL (ioctl(fd, TIOCMBIC, &val));
-#else
 		xf86Msg (X_WARNING,
 			 "Option ClearRTS not supported on this OS\n");
-			return (-1);
-#endif
+			return -1;
 		xf86MarkOptionUsedByName (options, "ClearRTS");
 	}
 
 	SYSCALL (r = tcsetattr (fd, TCSANOW, &t));
-	return (r);
+	return r;
 }
 
 int
@@ -389,11 +374,11 @@ xf86SetSerialSpeed (int fd, int speed)
 	{
 		xf86Msg (X_ERROR,
 			 "Invalid Option BaudRate value: %d\n", speed);
-		return (-1);
+		return -1;
 	}
 
 	SYSCALL (r = tcsetattr (fd, TCSANOW, &t));
-	return (r);
+	return r;
 }
 
 int
@@ -408,7 +393,7 @@ xf86ReadSerial (int fd, void *buf, int count)
 	for (i = 1; i < r; i++)
 	    DebugF(", 0x%x",(unsigned char)*(((unsigned char *)buf) + i));
 	DebugF("\n");
-	return (r);
+	return r;
 }
 
 int
@@ -422,7 +407,7 @@ xf86WriteSerial (int fd, const void *buf, int count)
 	    ErrorF(", 0x%x",(unsigned char)*(((unsigned char *)buf) + i));
 	DebugF("\n");
 	SYSCALL (r = write (fd, buf, count));
-	return (r);
+	return r;
 }
 
 int
@@ -431,7 +416,7 @@ xf86CloseSerial (int fd)
 	int r;
 
 	SYSCALL (r = close (fd));
-	return (r);
+	return r;
 }
 
 int
@@ -457,7 +442,7 @@ xf86WaitForInput (int fd, int timeout)
 	    SYSCALL (r = select (FD_SETSIZE, NULL, NULL, NULL, &to));
 	}
 	xf86ErrorFVerb (9,"select returned %d\n", r);
-	return (r);
+	return r;
 }
 
 int
@@ -466,7 +451,7 @@ xf86SerialSendBreak (int fd, int duration)
 	int r;
 
 	SYSCALL (r = tcsendbreak (fd, duration));
-	return (r);
+	return r;
 	
 }
 

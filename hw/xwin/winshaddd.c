@@ -42,7 +42,7 @@
  */
 
 extern HWND			g_hDlgExit;
-extern char *g_pszLogFile;
+extern const char *g_pszLogFile;
 
 /*
  * FIXME: Headers are broken, DEFINE_GUID doesn't work correctly,
@@ -525,8 +525,8 @@ winShadowUpdateDD (ScreenPtr pScreen,
   HRESULT		ddrval = DD_OK;
   RECT			rcDest, rcSrc;
   POINT			ptOrigin;
-  DWORD			dwBox = REGION_NUM_RECTS (damage);
-  BoxPtr		pBox = REGION_RECTS (damage);
+  DWORD			dwBox = RegionNumRects (damage);
+  BoxPtr		pBox = RegionRects (damage);
   HRGN			hrgnTemp = NULL, hrgnCombined = NULL;
 
   /*
@@ -588,7 +588,7 @@ winShadowUpdateDD (ScreenPtr pScreen,
     }
   else
     {
-      BoxPtr		pBoxExtents = REGION_EXTENTS (pScreen, damage);
+      BoxPtr		pBoxExtents = RegionExtents(damage);
 
       /* Compute a GDI region from the damaged region */
       hrgnCombined = CreateRectRgn (pBox->x1, pBox->y1, pBox->x2, pBox->y2);
@@ -651,7 +651,7 @@ winShadowUpdateDD (ScreenPtr pScreen,
 	      "pixmap header to point to the new address.  If you get "
 	      "this message and "PROJECT_NAME" freezes or crashes "
 	      "after this message then send a problem report and your "
-	      "%s file to " BUILDERADDR, g_pszLogFile);
+	      "%s file to " BUILDERADDR "\n", g_pszLogFile);
 
       /* Location of shadow framebuffer has changed */
       pScreenInfo->pfb = pScreenPriv->pddsdShadow->lpSurface;

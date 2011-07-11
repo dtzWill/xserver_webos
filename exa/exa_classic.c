@@ -38,7 +38,7 @@ ExaGetPixmapAddress(PixmapPtr p)
 {
     ExaPixmapPriv(p);
 
-    if (pExaPixmap->offscreen && pExaPixmap->fb_ptr)
+    if (pExaPixmap->use_gpu_copy && pExaPixmap->fb_ptr)
 	return pExaPixmap->fb_ptr;
     else
 	return pExaPixmap->sys_ptr;
@@ -90,7 +90,7 @@ exaCreatePixmap_classic(ScreenPtr pScreen, int w, int h, int depth,
     pExaPixmap->sys_pitch = pPixmap->devKind;
 
     pPixmap->devPrivate.ptr = NULL;
-    pExaPixmap->offscreen = FALSE;
+    pExaPixmap->use_gpu_copy = FALSE;
 
     pExaPixmap->fb_ptr = NULL;
     exaSetFbPitch(pExaScr, pExaPixmap, w, h, bpp);
@@ -131,11 +131,15 @@ exaCreatePixmap_classic(ScreenPtr pScreen, int w, int h, int depth,
     box.y1 = 0;
     box.x2 = w;
     box.y2 = h;
-    REGION_INIT(pScreen, &pExaPixmap->validSys, &box, 0);
-    REGION_INIT(pScreen, &pExaPixmap->validFB, &box, 0);
+    RegionInit(&pExaPixmap->validSys, &box, 0);
+    RegionInit(&pExaPixmap->validFB, &box, 0);
 
     exaSetAccelBlock(pExaScr, pExaPixmap,
                      w, h, bpp);
+
+    /* During a fallback we must prepare access. */
+    if (pExaScr->fallback_counter)
+	exaPrepareAccess(&pPixmap->drawable, EXA_PREPARE_AUX_DEST);
 
     return pPixmap;
 }
@@ -144,7 +148,7 @@ Bool
 exaModifyPixmapHeader_classic(PixmapPtr pPixmap, int width, int height, int depth,
 		      int bitsPerPixel, int devKind, pointer pPixData)
 {
-    ScreenPtr pScreen = pPixmap->drawable.pScreen;
+    ScreenPtr pScreen;
     ExaScreenPrivPtr pExaScr;
     ExaPixmapPrivPtr pExaPixmap;
     Bool ret;
@@ -152,6 +156,7 @@ exaModifyPixmapHeader_classic(PixmapPtr pPixmap, int width, int height, int dept
     if (!pPixmap)
         return FALSE;
 
+    pScreen = pPixmap->drawable.pScreen;
     pExaScr = ExaGetScreenPriv(pScreen);
     pExaPixmap = ExaGetPixmapPriv(pPixmap);
 
@@ -164,7 +169,7 @@ exaModifyPixmapHeader_classic(PixmapPtr pPixmap, int width, int height, int dept
 
 	/* Classic EXA:
 	 * - Framebuffer.
-	 * - Scratch pixmap with offscreen memory.
+	 * - Scratch pixmap with gpu memory.
 	 */
 	if (pExaScr->info->memoryBase && pPixData) {
 	    if ((CARD8 *)pPixData >= pExaScr->info->memoryBase &&
@@ -172,7 +177,7 @@ exaModifyPixmapHeader_classic(PixmapPtr pPixmap, int width, int height, int dept
 				pExaScr->info->memorySize) {
 		pExaPixmap->fb_ptr = pPixData;
 		pExaPixmap->fb_pitch = devKind;
-		pExaPixmap->offscreen = TRUE;
+		pExaPixmap->use_gpu_copy = TRUE;
 	    }
 	}
 
@@ -185,7 +190,7 @@ exaModifyPixmapHeader_classic(PixmapPtr pPixmap, int width, int height, int dept
         }
 
 	/* Pixmaps subject to ModifyPixmapHeader will be pinned to system or
-	 * offscreen memory, so there's no need to track damage.
+	 * gpu memory, so there's no need to track damage.
 	 */
 	if (pExaPixmap->pDamage) {
 	    DamageUnregister(&pPixmap->drawable, pExaPixmap->pDamage);
@@ -216,6 +221,8 @@ exaDestroyPixmap_classic (PixmapPtr pPixmap)
     {
 	ExaPixmapPriv (pPixmap);
 
+	exaDestroyPixmap(pPixmap);
+
 	if (pExaPixmap->area)
 	{
 	    DBG_PIXMAP(("-- 0x%p (0x%x) (%dx%d)\n",
@@ -228,8 +235,8 @@ exaDestroyPixmap_classic (PixmapPtr pPixmap)
 	    pPixmap->devPrivate.ptr = pExaPixmap->sys_ptr;
 	    pPixmap->devKind = pExaPixmap->sys_pitch;
 	}
-	REGION_UNINIT(pPixmap->drawable.pScreen, &pExaPixmap->validSys);
-	REGION_UNINIT(pPixmap->drawable.pScreen, &pExaPixmap->validFB);
+	RegionUninit(&pExaPixmap->validSys);
+	RegionUninit(&pExaPixmap->validFB);
     }
 
     swap(pExaScr, pScreen, DestroyPixmap);
@@ -240,7 +247,7 @@ exaDestroyPixmap_classic (PixmapPtr pPixmap)
 }
 
 Bool
-exaPixmapIsOffscreen_classic(PixmapPtr pPixmap)
+exaPixmapHasGpuCopy_classic(PixmapPtr pPixmap)
 {
     ScreenPtr pScreen = pPixmap->drawable.pScreen;
     ExaScreenPriv(pScreen);
@@ -248,11 +255,12 @@ exaPixmapIsOffscreen_classic(PixmapPtr pPixmap)
     Bool ret;
 
     if (pExaScr->info->PixmapIsOffscreen) {
+	void* old_ptr = pPixmap->devPrivate.ptr;
 	pPixmap->devPrivate.ptr = ExaGetPixmapAddress(pPixmap);
 	ret = pExaScr->info->PixmapIsOffscreen(pPixmap);
-	pPixmap->devPrivate.ptr = NULL;
+	pPixmap->devPrivate.ptr = old_ptr;
     } else
-	ret = (pExaPixmap->offscreen && pExaPixmap->fb_ptr);
+	ret = (pExaPixmap->use_gpu_copy && pExaPixmap->fb_ptr);
 
     return ret;
 }

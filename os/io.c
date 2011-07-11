@@ -215,8 +215,8 @@ ReadRequestFromClient(ClientPtr client)
 	    register ConnectionInputPtr aci = AvailableInput->input;
 	    if (aci->size > BUFWATERMARK)
 	    {
-		xfree(aci->buffer);
-		xfree(aci);
+		free(aci->buffer);
+		free(aci);
 	    }
 	    else
 	    {
@@ -251,7 +251,14 @@ ReadRequestFromClient(ClientPtr client)
     need_header = FALSE;
     move_header = FALSE;
     gotnow = oci->bufcnt + oci->buffer - oci->bufptr;
-    if (gotnow < sizeof(xReq))
+
+    if (oci->ignoreBytes > 0) {
+	if (oci->ignoreBytes > oci->size)
+	    needed = oci->size;
+	else
+	    needed = oci->ignoreBytes;
+    }
+    else if (gotnow < sizeof(xReq))
     {
 	/* We don't have an entire xReq yet.  Can't tell how big
 	 * the request will be until we get the whole xReq.
@@ -294,8 +301,13 @@ ReadRequestFromClient(ClientPtr client)
 	if (needed > maxBigRequestSize << 2)
 	{
 	    /* request is too big for us to handle */
-	    YieldControlDeath();
-	    return -1;
+	    /*
+	     * Mark the rest of it as needing to be ignored, and then return
+	     * the full size.  Dispatch() will turn it into a BadLength error.
+	     */
+	    oci->ignoreBytes = needed - gotnow;
+	    oci->lenLastReq = gotnow;
+	    return needed;
 	}
 	if ((gotnow == 0) ||
 	    ((oci->bufptr - oci->buffer + needed) > oci->size))
@@ -310,7 +322,7 @@ ReadRequestFromClient(ClientPtr client)
 		/* make buffer bigger to accomodate request */
 		char *ibuf;
 
-		ibuf = (char *)xrealloc(oci->buffer, needed);
+		ibuf = (char *)realloc(oci->buffer, needed);
 		if (!ibuf)
 		{
 		    YieldControlDeath();
@@ -360,7 +372,7 @@ ReadRequestFromClient(ClientPtr client)
 	{
 	    char *ibuf;
 
-	    ibuf = (char *)xrealloc(oci->buffer, BUFSIZE);
+	    ibuf = (char *)realloc(oci->buffer, BUFSIZE);
 	    if (ibuf)
 	    {
 		oci->size = BUFSIZE;
@@ -398,6 +410,27 @@ ReadRequestFromClient(ClientPtr client)
 	else
 	    needed = sizeof(xReq);
     }
+
+    /* If there are bytes to ignore, ignore them now. */
+
+    if (oci->ignoreBytes > 0) {
+	assert(needed == oci->ignoreBytes || needed == oci->size);
+	/*
+	 * The _XSERVTransRead call above may return more or fewer bytes than we
+	 * want to ignore.  Ignore the smaller of the two sizes.
+	 */
+	if (gotnow < needed) {
+	    oci->ignoreBytes -= gotnow;
+	    oci->bufptr += gotnow;
+	    gotnow = 0;
+	} else {
+	    oci->ignoreBytes -= needed;
+	    oci->bufptr += needed;
+	    gotnow -= needed;
+	}
+	needed = 0;
+    }
+
     oci->lenLastReq = needed;
 
     /*
@@ -479,8 +512,8 @@ InsertFakeRequest(ClientPtr client, char *data, int count)
 	    ConnectionInputPtr aci = AvailableInput->input;
 	    if (aci->size > BUFWATERMARK)
 	    {
-		xfree(aci->buffer);
-		xfree(aci);
+		free(aci->buffer);
+		free(aci);
 	    }
 	    else
 	    {
@@ -506,9 +539,9 @@ InsertFakeRequest(ClientPtr client, char *data, int count)
     {
 	char *ibuf;
 
-	ibuf = (char *)xrealloc(oci->buffer, gotnow + count);
+	ibuf = (char *)realloc(oci->buffer, gotnow + count);
 	if (!ibuf)
-	    return(FALSE);
+	    return FALSE;
 	oci->size = gotnow + count;
 	oci->buffer = ibuf;
 	oci->bufptr = ibuf + oci->bufcnt - gotnow;
@@ -529,7 +562,7 @@ InsertFakeRequest(ClientPtr client, char *data, int count)
 	FD_SET(fd, &ClientsWithInput);
     else
 	YieldControlNoInput(fd);
-    return(TRUE);
+    return TRUE;
 }
 
 /*****************************************************************
@@ -698,15 +731,17 @@ SetCriticalOutputPending(void)
 int
 WriteToClient (ClientPtr who, int count, const void *__buf)
 {
-    OsCommPtr oc = (OsCommPtr)who->osPrivate;
-    ConnectionOutputPtr oco = oc->output;
+    OsCommPtr oc;
+    ConnectionOutputPtr oco;
     int padBytes;
     const char *buf = __buf;
 #ifdef DEBUG_COMMUNICATION
     Bool multicount = FALSE;
 #endif
-    if (!count)
-	return(0);
+    if (!count || !who || who == serverClient || who->clientGone)
+	return 0;
+    oc = who->osPrivate;
+    oco = oc->output;
 #ifdef DEBUG_COMMUNICATION
     {
 	char info[128];
@@ -817,6 +852,10 @@ WriteToClient (ClientPtr who, int count, const void *__buf)
 	  CriticalOutputPending = FALSE;
 	  NewOutputPending = FALSE;
 	}
+
+	if (FlushCallback)
+	    CallCallbacks(&FlushCallback, NULL);
+
 	return FlushClient(who, oc, buf, count);
     }
 
@@ -824,7 +863,7 @@ WriteToClient (ClientPtr who, int count, const void *__buf)
     FD_SET(oc->fd, &OutputPending);
     memmove((char *)oco->buf + oco->count, buf, count);
     oco->count += count + padBytes;
-    return(count);
+    return count;
 }
 
  /********************
@@ -937,7 +976,7 @@ FlushClient(ClientPtr who, OsCommPtr oc, const void *__extraBuf, int extraCount)
 	    {
 		unsigned char *obuf;
 
-		obuf = (unsigned char *)xrealloc(oco->buf,
+		obuf = (unsigned char *)realloc(oco->buf,
 						 notWritten + BUFSIZE);
 		if (!obuf)
 		{
@@ -946,7 +985,7 @@ FlushClient(ClientPtr who, OsCommPtr oc, const void *__extraBuf, int extraCount)
 		    oc->trans_conn = NULL;
 		    MarkClientException(who);
 		    oco->count = 0;
-		    return(-1);
+		    return -1;
 		}
 		oco->size = notWritten + BUFSIZE;
 		oco->buf = obuf;
@@ -979,7 +1018,7 @@ FlushClient(ClientPtr who, OsCommPtr oc, const void *__extraBuf, int extraCount)
 	    }
 	    MarkClientException(who);
 	    oco->count = 0;
-	    return(-1);
+	    return -1;
 	}
     }
 
@@ -994,8 +1033,8 @@ FlushClient(ClientPtr who, OsCommPtr oc, const void *__extraBuf, int extraCount)
     }
     if (oco->size > BUFWATERMARK)
     {
-	xfree(oco->buf);
-	xfree(oco);
+	free(oco->buf);
+	free(oco);
     }
     else
     {
@@ -1011,19 +1050,20 @@ AllocateInputBuffer(void)
 {
     ConnectionInputPtr oci;
 
-    oci = xalloc(sizeof(ConnectionInput));
+    oci = malloc(sizeof(ConnectionInput));
     if (!oci)
 	return NULL;
-    oci->buffer = xalloc(BUFSIZE);
+    oci->buffer = malloc(BUFSIZE);
     if (!oci->buffer)
     {
-	xfree(oci);
+	free(oci);
 	return NULL;
     }
     oci->size = BUFSIZE;
     oci->bufptr = oci->buffer;
     oci->bufcnt = 0;
     oci->lenLastReq = 0;
+    oci->ignoreBytes = 0;
     return oci;
 }
 
@@ -1032,13 +1072,13 @@ AllocateOutputBuffer(void)
 {
     ConnectionOutputPtr oco;
 
-    oco = xalloc(sizeof(ConnectionOutput));
+    oco = malloc(sizeof(ConnectionOutput));
     if (!oco)
 	return NULL;
-    oco->buf = xcalloc(1, BUFSIZE);
+    oco->buf = calloc(1, BUFSIZE);
     if (!oco->buf)
     {
-	xfree(oco);
+	free(oco);
 	return NULL;
     }
     oco->size = BUFSIZE;
@@ -1058,8 +1098,8 @@ FreeOsBuffers(OsCommPtr oc)
     {
 	if (FreeInputs)
 	{
-	    xfree(oci->buffer);
-	    xfree(oci);
+	    free(oci->buffer);
+	    free(oci);
 	}
 	else
 	{
@@ -1074,8 +1114,8 @@ FreeOsBuffers(OsCommPtr oc)
     {
 	if (FreeOutputs)
 	{
-	    xfree(oco->buf);
-	    xfree(oco);
+	    free(oco->buf);
+	    free(oco);
 	}
 	else
 	{
@@ -1095,13 +1135,13 @@ ResetOsBuffers(void)
     while ((oci = FreeInputs))
     {
 	FreeInputs = oci->next;
-	xfree(oci->buffer);
-	xfree(oci);
+	free(oci->buffer);
+	free(oci);
     }
     while ((oco = FreeOutputs))
     {
 	FreeOutputs = oco->next;
-	xfree(oco->buf);
-	xfree(oco);
+	free(oco->buf);
+	free(oco);
     }
 }
