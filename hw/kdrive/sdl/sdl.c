@@ -98,6 +98,9 @@ void GL_Init(void);
 void GL_InitTexture( struct SdlGLESDriver * driver );
 void GL_Render( struct SdlGLESDriver * driver, UpdateRect_t U );
 
+void detectOrientation(void);
+Bool updateOrientation(int width, int height);
+
 /*-----------------------------------------------------------------------------
  *  GL variables
  *-----------------------------------------------------------------------------*/
@@ -234,9 +237,6 @@ struct SdlGLESDriver
 
 static Bool sdlScreenInit(KdScreenInfo *screen)
 {
-  SDL_Joystick *joystick;
-  Sint16 xAxis, yAxis, zAxis;
-  int timeout;
   struct SdlGLESDriver *sdlGLESDriver=calloc(1, sizeof(struct SdlGLESDriver));
   SDL_Surface * s = NULL;
 
@@ -272,75 +272,23 @@ static Bool sdlScreenInit(KdScreenInfo *screen)
   if ( s->w <= 0 || s->h <= 0 )
     return FALSE;
 
-  // Read the current accellerometer values
-  joystick = SDL_JoystickOpen(0);
-  xAxis = 0; yAxis = 0; zAxis = 0; timeout = 0;
-  while (!xAxis && !yAxis && !zAxis && (timeout < 30)) {
-    usleep(100000); // Sample at 10 times per second
-    xAxis = SDL_JoystickGetAxis(joystick, 0);
-    yAxis = SDL_JoystickGetAxis(joystick, 1);
-    zAxis = SDL_JoystickGetAxis(joystick, 2);
-    dprintf("Sample orientation: %d %d %d\n", xAxis, yAxis, zAxis);
-    timeout += 1;
-  }
-  SDL_JoystickClose(joystick);
+  // Figure out our current orientation
+  detectOrientation();
 
-  // Convert it into a device orientation using some heuristics
-  if ((xAxis < -10000) && (yAxis > -25000) && (yAxis < 25000)) {
-    deviceOrientation = 0;
-  }
-  else if ((yAxis > 10000) && (xAxis > -25000) && (xAxis < 25000)) {
-    deviceOrientation = 90;
-  }
-  else if ((xAxis > 10000) && (yAxis > -25000) && (yAxis < 25000)) {
-    deviceOrientation = 180;
-  }
-  else if ((yAxis < -10000) && (xAxis > -25000) && (xAxis < 25000)) {
-    deviceOrientation = 270;
-  }
-
-  switch (deviceOrientation) {
-  case 0:
-    dprintf("Orientation 0\n");
-    screen_width  = screen->width = s->w;
-    screen_height = screen->height = s->h;
-    vertexCoords = orientation_0_vertexCoords;
-    PDL_SetOrientation(PDL_ORIENTATION_0);
-    break;
-  case 90:
-    dprintf("Orientation 90\n");
-    screen_width  = screen->width = s->h;
-    screen_height = screen->height = s->w;
-    vertexCoords = orientation_90_vertexCoords;
-    PDL_SetOrientation(PDL_ORIENTATION_90);
-    break;
-  case 180:
-    dprintf("Orientation 180\n");
-    screen_width  = screen->width = s->w;
-    screen_height = screen->height = s->h;
-    vertexCoords = orientation_180_vertexCoords;
-    PDL_SetOrientation(PDL_ORIENTATION_180);
-    break;
-  case 270:
-    dprintf("Orientation 270\n");
-    screen_width  = screen->width = s->h;
-    screen_height = screen->height = s->w;
-    vertexCoords = orientation_270_vertexCoords;
-    PDL_SetOrientation(PDL_ORIENTATION_270);
-    break;
-  default:
-    fprintf( stderr, "Invalid deviceOrientation!\n" );
+  // Update our state using the detected orientation
+  if (!updateOrientation(s->w, s->h))
     return FALSE;
-  }
 
   dprintf("PDL_SetKeyboardState %d\n", 1 );
   PDL_SetKeyboardState(1);
 
   //Create buffer for rendering into
-  sdlGLESDriver->buffer = malloc( s->w * s->h *24 / 8 );
-  sdlGLESDriver->width = screen->width;
-  sdlGLESDriver->height = screen->height;
+  sdlGLESDriver->buffer = malloc( screen_width * screen_height *24 / 8 );
+  sdlGLESDriver->width = screen_width;
+  sdlGLESDriver->height = screen_height;
 
+  screen->width = screen_width;
+  screen->height = screen_height;
   screen->fb[0].depth= 24;
   screen->fb[0].visuals=(1<<TrueColor);
   screen->fb[0].redMask=redMask;
@@ -352,8 +300,8 @@ static Bool sdlScreenInit(KdScreenInfo *screen)
   screen->memory_size=0;
   screen->off_screen_base=0;
   screen->driver=sdlGLESDriver;
-  screen->fb[0].byteStride=(screen->width*24)/8;
-  screen->fb[0].pixelStride=screen->width;
+  screen->fb[0].byteStride=(screen_width*24)/8;
+  screen->fb[0].pixelStride=screen_width;
   screen->fb[0].frameBuffer=(CARD8 *)sdlGLESDriver->buffer;
   SDL_WM_SetCaption("Freedesktop.org X server (SDLGLES)", NULL);
 
@@ -773,4 +721,77 @@ void GL_Render( struct SdlGLESDriver * driver, UpdateRect_t U )
     checkError();
 
     return;
+}
+
+void detectOrientation(void)
+{
+  int timeout;
+  SDL_Joystick *joystick;
+  Sint16 xAxis, yAxis, zAxis;
+
+  // Read the current accellerometer values
+  joystick = SDL_JoystickOpen(0);
+  xAxis = 0; yAxis = 0; zAxis = 0; timeout = 0;
+  while (!xAxis && !yAxis && !zAxis && (timeout < 30)) {
+    usleep(100000); // Sample at 10 times per second
+    xAxis = SDL_JoystickGetAxis(joystick, 0);
+    yAxis = SDL_JoystickGetAxis(joystick, 1);
+    zAxis = SDL_JoystickGetAxis(joystick, 2);
+    dprintf("Sample orientation: %d %d %d\n", xAxis, yAxis, zAxis);
+    timeout += 1;
+  }
+  SDL_JoystickClose(joystick);
+
+  // Convert it into a device orientation using some heuristics
+  if ((xAxis < -10000) && (yAxis > -25000) && (yAxis < 25000)) {
+    deviceOrientation = 0;
+  }
+  else if ((yAxis > 10000) && (xAxis > -25000) && (xAxis < 25000)) {
+    deviceOrientation = 90;
+  }
+  else if ((xAxis > 10000) && (yAxis > -25000) && (yAxis < 25000)) {
+    deviceOrientation = 180;
+  }
+  else if ((yAxis < -10000) && (xAxis > -25000) && (xAxis < 25000)) {
+    deviceOrientation = 270;
+  }
+}
+
+Bool updateOrientation(int width, int height)
+{
+  switch (deviceOrientation) {
+  case 0:
+    dprintf("Orientation 0\n");
+    screen_width  = width;
+    screen_height = height;
+    vertexCoords = orientation_0_vertexCoords;
+    PDL_SetOrientation(PDL_ORIENTATION_0);
+    break;
+  case 90:
+    dprintf("Orientation 90\n");
+    screen_width  = height;
+    screen_height = width;
+    vertexCoords = orientation_90_vertexCoords;
+    PDL_SetOrientation(PDL_ORIENTATION_90);
+    break;
+  case 180:
+    dprintf("Orientation 180\n");
+    screen_width  = width;
+    screen_height = height;
+    vertexCoords = orientation_180_vertexCoords;
+    PDL_SetOrientation(PDL_ORIENTATION_180);
+    break;
+  case 270:
+    dprintf("Orientation 270\n");
+    screen_width  = height;
+    screen_height = width;
+    vertexCoords = orientation_270_vertexCoords;
+    PDL_SetOrientation(PDL_ORIENTATION_270);
+    break;
+  default:
+    fprintf( stderr, "Invalid deviceOrientation!\n" );
+    return FALSE;
+  }
+
+  return TRUE;
 }
