@@ -53,6 +53,7 @@ typedef struct
 extern void PDL_SetOrientation( int orientation );
 extern void PDL_Init( char unused );
 extern void PDL_SetKeyboardState(int visible);
+extern int  PDL_GetPDKVersion(void);
 
  /* the action button below the screen */
 #define PDL_ORIENTATION_0 0
@@ -245,6 +246,7 @@ static Bool sdlScreenInit(KdScreenInfo *screen)
 {
   struct SdlGLESDriver *sdlGLESDriver=calloc(1, sizeof(struct SdlGLESDriver));
   SDL_Surface * s = NULL;
+  int pdkVersion;
 
   dprintf("sdlScreenInit()\n");
 
@@ -281,12 +283,22 @@ static Bool sdlScreenInit(KdScreenInfo *screen)
   // Figure out our current orientation
   detectOrientation();
 
+  // Don't show the keyboard for devices with physical keyboards
+  pdkVersion = PDL_GetPDKVersion();
+  dprintf("PDK version: %d\n", pdkVersion);
+  if (pdkVersion <= 300) {
+    use_keyboard = 0;
+  }
+
   // Update our state using the detected orientation
   if (!updateOrientation(s->w, s->h))
     return FALSE;
 
-  dprintf("PDL_SetKeyboardState %d\n", use_keyboard );
-  PDL_SetKeyboardState( use_keyboard );
+  // Only call PDL_SetKeyboardState if we want the keyboard
+  if (use_keyboard) {
+    dprintf("PDL_SetKeyboardState %d\n", use_keyboard );
+    PDL_SetKeyboardState( use_keyboard );
+  }
 
   //Create buffer for rendering into
   sdlGLESDriver->buffer = malloc( screen_width * screen_height *24 / 8 );
