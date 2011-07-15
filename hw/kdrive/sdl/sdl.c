@@ -288,6 +288,7 @@ static Bool sdlScreenInit(KdScreenInfo *screen)
   dprintf("PDK version: %d\n", pdkVersion);
   if (pdkVersion <= 300) {
     use_keyboard = 0;
+    deviceOrientation = 0;
   }
 
   // Update our state using the detected orientation
