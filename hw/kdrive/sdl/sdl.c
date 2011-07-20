@@ -559,6 +559,11 @@ void sdlTimer(void)
         {
           // On touchpad, send the raw unicode value.
           keyToPass = event.key.keysym.unicode;
+
+          // '1' is outside valid range of 8->255,
+          // remap to 255.
+          if (keyToPass == 1) // TAB
+            keyToPass = 255;
         }
         else
         {
