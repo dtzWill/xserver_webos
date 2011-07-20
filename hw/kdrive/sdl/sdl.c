@@ -42,6 +42,8 @@ static int use_keyboard = 1;
 #define PORTRAIT_KEYBOARD_OFFSET 250
 #define LANDSCAPE_KEYBOARD_OFFSET 250
 
+static const int TOUCHPAD = 1;
+
 typedef struct
 {
   long x1, x2, y1, y2;
@@ -266,6 +268,9 @@ static Bool sdlScreenInit(KdScreenInfo *screen)
   {
     return FALSE;
   }
+
+  if (TOUCHPAD)
+    SDL_EnableUNICODE( SDL_ENABLE );
 
   dprintf("Calling SDL_SetVideoMode...\n");
   s = SDL_SetVideoMode( screen->width, screen->height, screen->fb.depth,
@@ -549,17 +554,27 @@ void sdlTimer(void)
         break;
       case SDL_KEYDOWN:
       case SDL_KEYUP:
-        //We want keycodes in SDL 0->127 and 255+, but X only wants 8-255.
-        //so we map 255+ to 127+ by subtracting 127
-        keyToPass = event.key.keysym.sym > 255 ? event.key.keysym.sym - 127 :
-          event.key.keysym.sym;
 
+        if (TOUCHPAD)
+        {
+          // On touchpad, send the raw unicode value.
+          keyToPass = event.key.keysym.unicode;
+        }
+        else
+        {
+          //We want keycodes in SDL 0->127 and 255+, but X only wants 8-255.
+          //so we map 255+ to 127+ by subtracting 127
+          keyToPass = event.key.keysym.sym > 255 ? event.key.keysym.sym - 127 :
+            event.key.keysym.sym;
+
+        }
         dprintf("KEY(%d): %d -> %d\n",
             event.type == SDL_KEYDOWN,
             event.key.keysym.sym, keyToPass);
 
         KdEnqueueKeyboardEvent (sdlKeyboard, keyToPass,
             event.type==SDL_KEYUP);
+
         break;
 
       case SDL_QUIT:
