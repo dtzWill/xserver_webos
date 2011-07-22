@@ -33,6 +33,7 @@
 #include <SDL/SDL_video.h>
 #include <SDL/SDL_opengles.h>
 #include "esFunc.h"
+#include "fbdev.h"
 
 static int screen_width = -1, screen_height = -1;
 static int effective_screen_height = -1;
@@ -189,8 +190,6 @@ int blueMask = 0xff0000;
 
 static void xsdlFini(void);
 static Bool sdlScreenInit(KdScreenInfo *screen);
-static Bool sdlFinishInitScreen(ScreenPtr pScreen);
-static Bool sdlCreateRes(ScreenPtr pScreen);
 
 static void sdlKeyboardFini(KdKeyboardInfo *ki);
 static Status sdlKeyboardInit(KdKeyboardInfo *ki);
@@ -226,11 +225,33 @@ KdPointerDriver sdlMouseDriver = {
     .Disable = sdlMouseDisable
 };
 
+KdCardFuncs	sdlFuncs = {
+    fbdevCardInit,	    /* cardinit */
+    sdlScreenInit,	    /* scrinit */
+    fbdevInitScreen,	    /* initScreen */
+    fbdevFinishInitScreen,  /* finishInitScreen */
+    fbdevCreateResources,   /* createRes */
+    fbdevPreserve,	    /* preserve */
+    fbdevEnable,	    /* enable */
+    fbdevDPMS,		    /* dpms */
+    fbdevDisable,	    /* disable */
+    fbdevRestore,	    /* restore */
+    fbdevScreenFini,	    /* scrfini */
+    fbdevCardFini,	    /* cardfini */
 
-KdCardFuncs sdlFuncs = {
-    .scrinit = sdlScreenInit,	/* scrinit */
-    .finishInitScreen = sdlFinishInitScreen, /* finishInitScreen */
-    .createRes = sdlCreateRes,	/* createRes */
+    0,			    /* initCursor */
+    0,			    /* enableCursor */
+    0,			    /* disableCursor */
+    0,			    /* finiCursor */
+    0,			    /* recolorCursor */
+
+    0,			    /* initAccel */
+    0,			    /* enableAccel */
+    0,			    /* disableAccel */
+    0,			    /* finiAccel */
+
+    fbdevGetColors,    	    /* getColors */
+    fbdevPutColors,	    /* putColors */
 };
 
 int mouseState=0;
@@ -273,8 +294,8 @@ static Bool sdlScreenInit(KdScreenInfo *screen)
     SDL_EnableUNICODE( SDL_ENABLE );
 
   dprintf("Calling SDL_SetVideoMode...\n");
-  s = SDL_SetVideoMode( screen->width, screen->height, screen->fb.depth,
-      SDL_OPENGLES | SDL_FULLSCREEN );
+  s = SDL_SetVideoMode( screen->width, screen->height, screen->fb.depth, SDL_ANYFORMAT );
+
   dprintf("SetVideoMode: %p\n", s );
   if( s == NULL )
     return FALSE;
@@ -306,87 +327,8 @@ static Bool sdlScreenInit(KdScreenInfo *screen)
     PDL_SetKeyboardState( use_keyboard );
   }
 
-  //Create buffer for rendering into
-  sdlGLESDriver->buffer = malloc( screen_width * screen_height *24 / 8 );
-  sdlGLESDriver->width = screen_width;
-  sdlGLESDriver->height = screen_height;
-
-  screen->width = screen_width;
-  screen->height = effective_screen_height;
-  screen->fb.depth= 24;
-  screen->fb.visuals=(1<<TrueColor);
-  screen->fb.redMask=redMask;
-  screen->fb.greenMask=greenMask;
-  screen->fb.blueMask=blueMask;
-  screen->fb.bitsPerPixel= 24;
-  screen->rate=60;
-  screen->driver=sdlGLESDriver;
-  screen->fb.byteStride=(screen_width*24)/8;
-  screen->fb.pixelStride=screen_width;
-  screen->fb.frameBuffer=(CARD8 *)sdlGLESDriver->buffer;
-  SDL_WM_SetCaption("Freedesktop.org X server (SDLGLES)", NULL);
-
-  GL_Init();
-  GL_InitTexture( sdlGLESDriver );
-
-  return TRUE;
-}
-
-void sdlShadowUpdate (ScreenPtr pScreen, shadowBufPtr pBuf)
-{
-  KdScreenPriv(pScreen);
-  KdScreenInfo *screen = pScreenPriv->screen;
-  struct SdlGLESDriver *sdlDriver=screen->driver;
-
-  RegionPtr		damage = shadowDamage(pBuf);
-  BoxPtr		pExtents = REGION_EXTENTS(pScreen, damage);
-
-  // Find what was changed, and update that to the screen
-  UpdateRect_t U;
-  U.x1 = pExtents->x1;
-  U.x2 = pExtents->x2;
-  U.y1 = pExtents->y1;
-  U.y2 = pExtents->y2;
-
-  GL_Render( sdlDriver, U );
-}
-
-
-void *sdlShadowWindow (ScreenPtr pScreen, CARD32 row, CARD32 offset, int mode, CARD32 *size, void *closure)
-{
-    fprintf( stderr, "No one calls this, right?!\n" );
-    exit( -1 );
-    return NULL;
-	//KdScreenPriv(pScreen);
-	//KdScreenInfo *screen = pScreenPriv->screen;
-	//struct SdlDriver *sdlDriver=screen->driver;
-	//*size=(sdlDriver->screen->w*sdlDriver->screen->format->BitsPerPixel)/8;
-	//dprintf("Shadow window()\n");
-	//return (void *)((CARD8 *)sdlDriver->screen->pixels + row * (*size) + offset);
-}
-
-
-static Bool sdlCreateRes(ScreenPtr pScreen)
-{
-	KdScreenPriv(pScreen);
-	KdScreenInfo *screen = pScreenPriv->screen;
-	KdShadowFbAlloc(screen, 0);
-	KdShadowSet(pScreen, RR_Rotate_0, sdlShadowUpdate, sdlShadowWindow);
-	return TRUE;
-}
-
-static Bool sdlFinishInitScreen(ScreenPtr pScreen)
-{
-	if (!shadowSetup (pScreen))
-		return FALSE;
-		
-/*
-#ifdef RANDR
-	if (!sdlRandRInit (pScreen))
-		return FALSE;
-#endif
-*/
-	return TRUE;
+  // Forward to fbdev's impl
+  return fbdevScreenInit(screen);
 }
 
 static void sdlKeyboardFini(KdKeyboardInfo *ki)
@@ -477,6 +419,8 @@ void ddxUseMsg(void)
 
 int ddxProcessArgument(int argc, char **argv, int i)
 {
+  fbdevDevicePath = "/dev/fb1";
+
 	return KdProcessArgument(argc, argv, i);
 }
 
@@ -673,97 +617,6 @@ void GL_Init(void)
     glUniform1i( samplerLoc, 0 );
     checkError();
 
-}
-
-void GL_InitTexture( struct SdlGLESDriver * driver )
-{
-    int num;
-
-    //delete it if we already have one
-    if ( texture )
-    {
-        glDeleteTextures( 1, &texture );
-        texture = 0;
-    }
-
-    glGenTextures(1, &texture);
-    checkError();
-    glBindTexture(GL_TEXTURE_2D, texture);
-    checkError();
-    
-    //sanity check
-    glGetIntegerv( GL_TEXTURE_BINDING_2D, &num );
-    assert( num == texture );
-    glGetIntegerv( GL_ACTIVE_TEXTURE, &num );
-    assert( num == GL_TEXTURE0 );
-    checkError();
-
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, gl_filter );
-    checkError();
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, gl_filter );
-    checkError();
-
-    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE );
-    checkError();
-    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE );
-    checkError();
-
-    glTexImage2D( GL_TEXTURE_2D, 0, GL_RGB, driver->width, driver->height,
-            0, GL_RGB, GL_UNSIGNED_BYTE, NULL );
-    checkError();
-}
-
-void GL_Render( struct SdlGLESDriver * driver, UpdateRect_t U )
-{
-    char * buf = NULL;
-
-    dprintf( "UPDATE: x1: %ld, x2: %ld, y1: %ld, y2: %ld\n",
-        U.x1, U.x2, U.y1, U.y2 );
-
-    //Draw the buffer to the screen
-    glVertexAttribPointer( positionLoc, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(GLfloat), vertexCoords );
-    checkError();
-    glVertexAttribPointer( texCoordLoc, 2, GL_FLOAT, GL_FALSE, 2*sizeof(GLfloat), texCoords );
-
-    checkError();
-
-    glEnableVertexAttribArray( positionLoc );
-    checkError();
-    glEnableVertexAttribArray( texCoordLoc );
-    checkError();
-
-    glBindTexture(GL_TEXTURE_2D, texture);
-    checkError();
-
-    //Upload buffer to texture
-#ifdef BLIT_FULL_TEXTURE
-    glTexSubImage2D( GL_TEXTURE_2D,0,
-            0,0, driver->width, driver->height,
-            GL_RGB,GL_UNSIGNED_BYTE,driver->buffer );
-#else
-    // Only update the modified *lines*
-    // We'd only send the modified rect, but that requires repacking.
-    // Which is
-    // a)more complicated O:)
-    // b)potentially wasteful in terms of CPU/memory copying
-    // c)I'm unclear on what the lifetime of the temporary packed data would be
-
-    // Informally, just sending updated lines is already much faster.
-    buf = driver->buffer + U.y1 * driver->width * 3;
-    glTexSubImage2D( GL_TEXTURE_2D, 0,
-            0, U.y1, driver->width, U.y2 - U.y1,
-            GL_RGB, GL_UNSIGNED_BYTE, buf );
-#endif
-    checkError();
-
-    glDrawElements( GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, indices );
-    checkError();
-
-    //Push to screen
-    SDL_GL_SwapBuffers();
-    checkError();
-
-    return;
 }
 
 void detectOrientation(void)

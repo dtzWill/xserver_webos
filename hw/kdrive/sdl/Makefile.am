@@ -5,7 +5,7 @@ INCLUDES = 					\
 
 bin_PROGRAMS = Xsdl
 
-Xsdl_SOURCES = sdl.c
+Xsdl_SOURCES = sdl.c fbdev.c
 
 Xsdl_LDADD = \
 	@KDRIVE_LIBS@                                  \
