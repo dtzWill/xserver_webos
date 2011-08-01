@@ -306,8 +306,10 @@ static Bool sdlScreenInit(KdScreenInfo *screen)
   if ( s->w <= 0 || s->h <= 0 )
     return FALSE;
 
-  // Figure out our current orientation
-  detectOrientation();
+  // Force orientation, framebuffer doesn't
+  // play nice with non-default orientations.
+  // (They _work_, it's just much slower)
+  deviceOrientation = 0;
 
   // Don't show the keyboard for devices with physical keyboards
   pdkVersion = PDL_GetPDKVersion();
@@ -617,40 +619,6 @@ void GL_Init(void)
     glUniform1i( samplerLoc, 0 );
     checkError();
 
-}
-
-void detectOrientation(void)
-{
-  int timeout;
-  SDL_Joystick *joystick;
-  Sint16 xAxis, yAxis, zAxis;
-
-  // Read the current accellerometer values
-  joystick = SDL_JoystickOpen(0);
-  xAxis = 0; yAxis = 0; zAxis = 0; timeout = 0;
-  while (!xAxis && !yAxis && !zAxis && (timeout < 30)) {
-    usleep(100000); // Sample at 10 times per second
-    xAxis = SDL_JoystickGetAxis(joystick, 0);
-    yAxis = SDL_JoystickGetAxis(joystick, 1);
-    zAxis = SDL_JoystickGetAxis(joystick, 2);
-    dprintf("Sample orientation: %d %d %d\n", xAxis, yAxis, zAxis);
-    timeout += 1;
-  }
-  SDL_JoystickClose(joystick);
-
-  // Convert it into a device orientation using some heuristics
-  if ((xAxis < -10000) && (yAxis > -25000) && (yAxis < 25000)) {
-    deviceOrientation = 0;
-  }
-  else if ((yAxis > 10000) && (xAxis > -25000) && (xAxis < 25000)) {
-    deviceOrientation = 90;
-  }
-  else if ((xAxis > 10000) && (yAxis > -25000) && (yAxis < 25000)) {
-    deviceOrientation = 180;
-  }
-  else if ((yAxis < -10000) && (xAxis > -25000) && (xAxis < 25000)) {
-    deviceOrientation = 270;
-  }
 }
 
 Bool updateOrientation(int width, int height)
