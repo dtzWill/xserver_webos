@@ -1,6 +1,5 @@
 /*
- * Copyright © 2004 PillowElephantBadgerBankPond 
- 
+ * Copyright © 2004 PillowElephantBadgerBankPond
  * Permission to use, copy, modify, distribute, and sell this software and its
  * documentation for any purpose is hereby granted without fee, provided that
  * the above copyright notice appear in all copies and that both that
@@ -73,22 +72,22 @@ extern int  PDL_GetPDKVersion(void);
 #ifdef DEBUG_GL
 static void checkError()
 {
-    /* Check for error conditions. */
-    GLenum gl_error = glGetError( );
+  /* Check for error conditions. */
+  GLenum gl_error = glGetError( );
 
-    if( gl_error != GL_NO_ERROR ) {
-        fprintf( stderr, "X sdlgl: OpenGL error: %x\n", gl_error );
-        while(1);
-        exit( 1 );
-    }
+  if( gl_error != GL_NO_ERROR ) {
+    fprintf( stderr, "X sdlgl: OpenGL error: %x\n", gl_error );
+    while(1);
+    exit( 1 );
+  }
 
-    char * sdl_error = SDL_GetError( );
+  char * sdl_error = SDL_GetError( );
 
-    if( sdl_error[0] != '\0' ) {
-        fprintf(stderr, "X sdlgl: SDL error '%s'\n", sdl_error);
-        while(1);
-        exit( 2 );
-    }
+  if( sdl_error[0] != '\0' ) {
+    fprintf(stderr, "X sdlgl: SDL error '%s'\n", sdl_error);
+    while(1);
+    exit( 2 );
+  }
 }
 #else
 #define checkError()
@@ -132,36 +131,36 @@ int gl_filter = GL_NEAREST;
 // Landscape, with home button on the right
 float orientation_0_vertexCoords[] =
 {
-    -1, 1,
-    -1, -1,
-    1, 1,
-    1, -1
+  -1,  1,
+  -1, -1,
+   1,  1,
+   1, -1
 };
 
 // Landscape, with home button on the left
 float orientation_180_vertexCoords[] =
 {
-    1, -1,
-    1, 1,
-    -1, -1,
-    -1, 1
+   1, -1,
+   1,  1,
+  -1, -1,
+  -1,  1
 };
 
 // Portrait, with home button at the bottom
 float orientation_90_vertexCoords[] =
 {
-    -1, -1,
-    1, -1,
-    -1, 1,
-    1, 1
+  -1, -1,
+   1, -1,
+  -1,  1,
+   1,  1
 };
 // Portrait, with home button at the top
 float orientation_270_vertexCoords[] =
 {
-    1, 1,
-    -1, 1,
-    1, -1,
-    -1, -1
+   1,  1,
+  -1,  1,
+   1, -1,
+  -1, -1
 };
 
 //Pick an orientation
@@ -171,10 +170,10 @@ float * vertexCoords = NULL;
 
 float texCoords[] =
 {
-    0.0, 0.0,
-    0.0, 1.0,
-    1.0, 0.0,
-    1.0, 1.0
+  0.0, 0.0,
+  0.0, 1.0,
+  1.0, 0.0,
+  1.0, 1.0
 };
 
 int deviceOrientation = 0; // 0, 90, 180, 270
@@ -184,9 +183,9 @@ GLushort indices[] = { 0, 1, 2, 1, 2, 3 };
 //We're using 24 bitdepth, each color has it's own byte
 //Note that the screen still is 32bit, but we use 24bit so we can upload
 //as a texture more easily (no reason to introduce alpha)
-int redMask = 0x0000ff;
+int redMask   = 0x0000ff;
 int greenMask = 0x00ff00;
-int blueMask = 0xff0000;
+int blueMask  = 0xff0000;
 
 static void xsdlFini(void);
 static Bool sdlScreenInit(KdScreenInfo *screen);
@@ -210,57 +209,57 @@ KdKeyboardInfo *sdlKeyboard = NULL;
 KdPointerInfo *sdlPointer = NULL;
 
 KdKeyboardDriver sdlKeyboardDriver = {
-    .name = "keyboard",
-    .Init = sdlKeyboardInit,
-    .Fini = sdlKeyboardFini,
-    .Enable = sdlKeyboardEnable,
-    .Disable = sdlKeyboardDisable
+  .name = "keyboard",
+  .Init = sdlKeyboardInit,
+  .Fini = sdlKeyboardFini,
+  .Enable = sdlKeyboardEnable,
+  .Disable = sdlKeyboardDisable
 };
 
 KdPointerDriver sdlMouseDriver = {
-    .name = "mouse",
-    .Init = sdlMouseInit,
-    .Fini = sdlMouseFini,
-    .Enable = sdlMouseEnable,
-    .Disable = sdlMouseDisable
+  .name = "mouse",
+  .Init = sdlMouseInit,
+  .Fini = sdlMouseFini,
+  .Enable = sdlMouseEnable,
+  .Disable = sdlMouseDisable
 };
 
-KdCardFuncs	sdlFuncs = {
-    fbdevCardInit,	    /* cardinit */
-    sdlScreenInit,	    /* scrinit */
-    fbdevInitScreen,	    /* initScreen */
-    fbdevFinishInitScreen,  /* finishInitScreen */
-    fbdevCreateResources,   /* createRes */
-    fbdevPreserve,	    /* preserve */
-    fbdevEnable,	    /* enable */
-    fbdevDPMS,		    /* dpms */
-    fbdevDisable,	    /* disable */
-    fbdevRestore,	    /* restore */
-    fbdevScreenFini,	    /* scrfini */
-    fbdevCardFini,	    /* cardfini */
+KdCardFuncs sdlFuncs = {
+  fbdevCardInit,          /* cardinit */
+  sdlScreenInit,          /* scrinit */
+  fbdevInitScreen,        /* initScreen */
+  fbdevFinishInitScreen,  /* finishInitScreen */
+  fbdevCreateResources,   /* createRes */
+  fbdevPreserve           /* preserve */
+  fbdevEnable,            /* enable */
+  fbdevDPMS,              /* dpms */
+  fbdevDisable,           /* disable */
+  fbdevRestore,           /* restore */
+  fbdevScreenFini,        /* scrfini */
+  fbdevCardFini,          /* cardfini */
 
-    0,			    /* initCursor */
-    0,			    /* enableCursor */
-    0,			    /* disableCursor */
-    0,			    /* finiCursor */
-    0,			    /* recolorCursor */
+  0,                      /* initCursor */
+  0,                      /* enableCursor */
+  0,                      /* disableCursor */
+  0,                      /* finiCursor */
+  0,                      /* recolorCursor */
 
-    0,			    /* initAccel */
-    0,			    /* enableAccel */
-    0,			    /* disableAccel */
-    0,			    /* finiAccel */
+  0,                      /* initAccel */
+  0,                      /* enableAccel */
+  0,                      /* disableAccel */
+  0,                      /* finiAccel */
 
-    fbdevGetColors,    	    /* getColors */
-    fbdevPutColors,	    /* putColors */
+  fbdevGetColors,         /* getColors */
+  fbdevPutColors,         /* putColors */
 };
 
-int mouseState=0;
+int mouseState = 0;
 
 struct SdlGLESDriver
 {
-    char * buffer;
-    int width;
-    int height;
+  char * buffer;
+  int width;
+  int height;
 };
 
 
@@ -335,50 +334,50 @@ static Bool sdlScreenInit(KdScreenInfo *screen)
 
 static void sdlKeyboardFini(KdKeyboardInfo *ki)
 {
-    sdlKeyboard = NULL;
+  sdlKeyboard = NULL;
 }
 
 static Status sdlKeyboardInit(KdKeyboardInfo *ki)
 {
-    ki->minScanCode = 8;
-    ki->maxScanCode = 255;
+  ki->minScanCode = 8;
+  ki->maxScanCode = 255;
 
-    sdlKeyboard = ki;
+  sdlKeyboard = ki;
 
-    return Success;
+  return Success;
 }
 
 static Status sdlKeyboardEnable(KdKeyboardInfo *pi)
 {
-    //XXX: Is something supposed to happen here?
-    return Success;
+  //XXX: Is something supposed to happen here?
+  return Success;
 }
 
 static void sdlKeyboardDisable(KdKeyboardInfo *pi)
 {
-    //XXX: Is something supposed to happen here?
+  //XXX: Is something supposed to happen here?
 }
 
 static Status sdlMouseInit (KdPointerInfo *pi)
 {
-    sdlPointer = pi;
-    return Success;
+  sdlPointer = pi;
+  return Success;
 }
 
 static void sdlMouseFini(KdPointerInfo *pi)
 {
-    sdlPointer = NULL;
+  sdlPointer = NULL;
 }
 
 static Status sdlMouseEnable (KdPointerInfo *pi)
 {
-    //XXX: Is something supposed to happen here?
-    return Success;
+  //XXX: Is something supposed to happen here?
+  return Success;
 }
 
 static void sdlMouseDisable (KdPointerInfo *pi)
 {
-    //XXX: Is something supposed to happen here?
+  //XXX: Is something supposed to happen here?
 }
 
 void InitCard(char *name)
@@ -389,41 +388,41 @@ void InitCard(char *name)
 
 void InitOutput(ScreenInfo *pScreenInfo, int argc, char **argv)
 {
-	KdInitOutput(pScreenInfo, argc, argv);
-	dprintf("InitOutput()\n");
+  KdInitOutput(pScreenInfo, argc, argv);
+  dprintf("InitOutput()\n");
 }
 
 void InitInput(int argc, char **argv)
 {
-        KdPointerInfo *pi;
-        KdKeyboardInfo *ki;
+  KdPointerInfo *pi;
+  KdKeyboardInfo *ki;
 
-        KdAddKeyboardDriver(&sdlKeyboardDriver);
-        KdAddPointerDriver(&sdlMouseDriver);
-        
-        ki = KdParseKeyboard("keyboard");
-        KdAddKeyboard(ki);
-        pi = KdParsePointer("mouse");
-        KdAddPointer(pi);
+  KdAddKeyboardDriver(&sdlKeyboardDriver);
+  KdAddPointerDriver(&sdlMouseDriver);
 
-        KdInitInput();
+  ki = KdParseKeyboard("keyboard");
+  KdAddKeyboard(ki);
+  pi = KdParsePointer("mouse");
+  KdAddPointer(pi);
+
+  KdInitInput();
 }
 
-void
+  void
 CloseInput (void)
 {
 }
 
 void ddxUseMsg(void)
 {
-	KdUseMsg();
+  KdUseMsg();
 }
 
 int ddxProcessArgument(int argc, char **argv, int i)
 {
   fbdevDevicePath = "/dev/fb1";
 
-	return KdProcessArgument(argc, argv, i);
+  return KdProcessArgument(argc, argv, i);
 }
 
 void sdlTimer(void)
@@ -537,28 +536,28 @@ void sdlTimer(void)
 
 static int xsdlInit(void)
 {
-	dprintf("Calling SDL_Init()\n");
-    /*
-     * Moved actual SDL_Init call to directly above SDL_SetVideoMode()
-     */
-    return TRUE;
+  dprintf("Calling SDL_Init()\n");
+  /*
+   * Moved actual SDL_Init call to directly above SDL_SetVideoMode()
+   */
+  return TRUE;
 }
 
 
 static void xsdlFini(void)
 {
-	SDL_Quit();
+  SDL_Quit();
 }
 
 KdOsFuncs sdlOsFuncs={
-	.Init = xsdlInit,
-	.Fini = xsdlFini,
-	.pollEvents = sdlTimer,
+  .Init = xsdlInit,
+  .Fini = xsdlFini,
+  .pollEvents = sdlTimer,
 };
 
 void OsVendorInit (void)
 {
-    KdOsInit (&sdlOsFuncs);
+  KdOsInit (&sdlOsFuncs);
 }
 
 
@@ -567,94 +566,94 @@ void OsVendorInit (void)
  *-----------------------------------------------------------------------------*/
 void GL_Init(void)
 {
-    static GLbyte vShaderStr[] =  
-        "attribute vec4 a_position;   \n"
-        "attribute vec2 a_texCoord;   \n"
-        "varying vec2 v_texCoord;     \n"
-        "void main()                  \n"
-        "{                            \n"
-        "   gl_Position = a_position; \n"
-        "   v_texCoord = a_texCoord;  \n"
-        "}                            \n";
+  static GLbyte vShaderStr[] =
+    "attribute vec4 a_position;   \n"
+    "attribute vec2 a_texCoord;   \n"
+    "varying vec2 v_texCoord;     \n"
+    "void main()                  \n"
+    "{                            \n"
+    "   gl_Position = a_position; \n"
+    "   v_texCoord = a_texCoord;  \n"
+    "}                            \n";
 
-    static GLbyte fShaderStr[] =  
-        "precision mediump float;                            \n"
-        "varying vec2 v_texCoord;                            \n"
-        "uniform sampler2D s_texture;                        \n"
-        "void main()                                         \n"
-        "{                                                   \n"
-        "  gl_FragColor = texture2D( s_texture, v_texCoord );\n"
-        "}                                                   \n";
+  static GLbyte fShaderStr[] =
+    "precision mediump float;                            \n"
+    "varying vec2 v_texCoord;                            \n"
+    "uniform sampler2D s_texture;                        \n"
+    "void main()                                         \n"
+    "{                                                   \n"
+    "  gl_FragColor = texture2D( s_texture, v_texCoord );\n"
+    "}                                                   \n";
 
-    // setup 2D gl environment
-    checkError();
-    glClearColor( 0.0f, 0.0f, 0.0f, 1.0f );//black background
-    checkError();
+  // setup 2D gl environment
+  checkError();
+  glClearColor( 0.0f, 0.0f, 0.0f, 1.0f );//black background
+  checkError();
 
-    glDisable(GL_DEPTH_TEST);
-    glDepthFunc( GL_ALWAYS );
-    checkError();
-    glDisable(GL_CULL_FACE);
-    checkError();
+  glDisable(GL_DEPTH_TEST);
+  glDepthFunc( GL_ALWAYS );
+  checkError();
+  glDisable(GL_CULL_FACE);
+  checkError();
 
-    // Load the shaders and get a linked program object
-    programObject = esLoadProgram ( ( char *)vShaderStr, (char *)fShaderStr );
-    checkError();
+  // Load the shaders and get a linked program object
+  programObject = esLoadProgram ( ( char *)vShaderStr, (char *)fShaderStr );
+  checkError();
 
-    // Get the attribute locations
-    positionLoc = glGetAttribLocation ( programObject, "a_position" );
-    checkError();
-    texCoordLoc = glGetAttribLocation ( programObject, "a_texCoord" );
-    checkError();
+  // Get the attribute locations
+  positionLoc = glGetAttribLocation ( programObject, "a_position" );
+  checkError();
+  texCoordLoc = glGetAttribLocation ( programObject, "a_texCoord" );
+  checkError();
 
-    // Get the sampler location
-    samplerLoc = glGetUniformLocation ( programObject, "s_texture" );
-    checkError();
+  // Get the sampler location
+  samplerLoc = glGetUniformLocation ( programObject, "s_texture" );
+  checkError();
 
-    // Yes, use this one.
-    glUseProgram ( programObject );
-    checkError();
+  // Yes, use this one.
+  glUseProgram ( programObject );
+  checkError();
 
-    // Set sampler
-    glUniform1i( samplerLoc, 0 );
-    checkError();
+  // Set sampler
+  glUniform1i( samplerLoc, 0 );
+  checkError();
 
 }
 
 Bool updateOrientation(int width, int height)
 {
   switch (deviceOrientation) {
-  case 0:
-    dprintf("Orientation 0\n");
-    screen_width  = width;
-    screen_height = height;
-    vertexCoords = orientation_0_vertexCoords;
-    PDL_SetOrientation(PDL_ORIENTATION_0);
-    break;
-  case 90:
-    dprintf("Orientation 90\n");
-    screen_width  = height;
-    screen_height = width;
-    vertexCoords = orientation_90_vertexCoords;
-    PDL_SetOrientation(PDL_ORIENTATION_90);
-    break;
-  case 180:
-    dprintf("Orientation 180\n");
-    screen_width  = width;
-    screen_height = height;
-    vertexCoords = orientation_180_vertexCoords;
-    PDL_SetOrientation(PDL_ORIENTATION_180);
-    break;
-  case 270:
-    dprintf("Orientation 270\n");
-    screen_width  = height;
-    screen_height = width;
-    vertexCoords = orientation_270_vertexCoords;
-    PDL_SetOrientation(PDL_ORIENTATION_270);
-    break;
-  default:
-    fprintf( stderr, "Invalid deviceOrientation!\n" );
-    return FALSE;
+    case 0:
+      dprintf("Orientation 0\n");
+      screen_width  = width;
+      screen_height = height;
+      vertexCoords = orientation_0_vertexCoords;
+      PDL_SetOrientation(PDL_ORIENTATION_0);
+      break;
+    case 90:
+      dprintf("Orientation 90\n");
+      screen_width  = height;
+      screen_height = width;
+      vertexCoords = orientation_90_vertexCoords;
+      PDL_SetOrientation(PDL_ORIENTATION_90);
+      break;
+    case 180:
+      dprintf("Orientation 180\n");
+      screen_width  = width;
+      screen_height = height;
+      vertexCoords = orientation_180_vertexCoords;
+      PDL_SetOrientation(PDL_ORIENTATION_180);
+      break;
+    case 270:
+      dprintf("Orientation 270\n");
+      screen_width  = height;
+      screen_height = width;
+      vertexCoords = orientation_270_vertexCoords;
+      PDL_SetOrientation(PDL_ORIENTATION_270);
+      break;
+    default:
+      fprintf( stderr, "Invalid deviceOrientation!\n" );
+      return FALSE;
   }
 
   effective_screen_height = screen_height;
