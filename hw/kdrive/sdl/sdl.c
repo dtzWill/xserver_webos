@@ -38,7 +38,7 @@
 static int screen_width = -1, screen_height = -1;
 static int effective_screen_height = -1;
 
-static int use_keyboard = 1;
+int use_keyboard = 1;
 
 #define PORTRAIT_KEYBOARD_OFFSET 250
 #define LANDSCAPE_KEYBOARD_OFFSET 250
