@@ -42,7 +42,19 @@ static int use_keyboard = 1;
 #define PORTRAIT_KEYBOARD_OFFSET 250
 #define LANDSCAPE_KEYBOARD_OFFSET 250
 
-static const int TOUCHPAD = 1;
+// Values from https://developer.palm.com/content/api/reference/pdk/pdl/pdl-get-hardware-id.html
+typedef enum {
+HARDWARE_UNKNOWN  =  -1,
+HARDWARE_PRE      = 101,
+HARDWARE_PRE_PLUS = 102,
+HARDWARE_PIXI     = 201,
+HARDWARE_VEER     = 301,
+HARDWARE_PRE_2    = 401,
+HARDWARE_PRE_3    = 501,
+HARDWARE_TOUCHPAD = 601
+} Hardware_t;
+
+static int UseUnicode = 0;
 
 typedef struct
 {
@@ -56,6 +68,7 @@ extern void PDL_SetOrientation( int orientation );
 extern void PDL_Init( char unused );
 extern void PDL_SetKeyboardState(int visible);
 extern int  PDL_GetPDKVersion(void);
+extern int  PDL_GetHardwareID(void);
 
  /* the action button below the screen */
 #define PDL_ORIENTATION_0 0
@@ -109,6 +122,7 @@ void GL_Render( struct SdlGLESDriver * driver, UpdateRect_t U );
 
 void detectOrientation(void);
 Bool updateOrientation(int width, int height);
+void configureForHardware(void);
 
 /*-----------------------------------------------------------------------------
  *  GL variables
@@ -269,7 +283,9 @@ static Bool sdlScreenInit(KdScreenInfo *screen)
     return FALSE;
   }
 
-  if (TOUCHPAD)
+  configureForHardware();
+
+  if (UseUnicode)
     SDL_EnableUNICODE( SDL_ENABLE );
 
   dprintf("Calling SDL_SetVideoMode...\n");
@@ -555,7 +571,7 @@ void sdlTimer(void)
       case SDL_KEYDOWN:
       case SDL_KEYUP:
 
-        if (TOUCHPAD)
+        if (UseUnicode)
         {
           // On touchpad, send the raw unicode value.
           keyToPass = event.key.keysym.unicode;
@@ -848,4 +864,29 @@ Bool updateOrientation(int width, int height)
   }
 
   return TRUE;
+}
+
+void configureForHardware(void)
+{
+
+  // Check if the hardware is a touchpad.
+  // If so, switch to unicode encoding of keyboard events,
+  // because (for example) we don't get SDL events for shift keys
+  // and the like, so the keyboard we're presenting doesn't have
+  // the usual (normal keys)x(modifiers) configuration.
+
+  // This method should work on other devices as well for the most part,
+  // however all 'special' efforts in the mappings such as support
+  // for sticky modifiers, arrows, etc, _won't_ work, so for now
+  // we use this method just for the touchpad.
+
+  int pdkVersion = PDL_GetPDKVersion();
+  // PDL_GetHardwareID only exists on PDK version >= 200
+  if (pdkVersion >= 200) {
+    Hardware_t H = PDL_GetHardwareID();
+    if (H == HARDWARE_TOUCHPAD)
+      UseUnicode = 1;
+  }
+
+  dprintf("UseUnicode: %d\n", 1);
 }
