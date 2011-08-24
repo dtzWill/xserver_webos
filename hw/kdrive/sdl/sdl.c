@@ -37,10 +37,27 @@
 static int screen_width = -1, screen_height = -1;
 static int effective_screen_height = -1;
 
-static int use_keyboard = 1;
+static int keyboard_type = 1; // xs, see below
 
-#define PORTRAIT_KEYBOARD_OFFSET 250
-#define LANDSCAPE_KEYBOARD_OFFSET 250
+typedef struct
+{
+  char * name;
+  int portrait_offset;
+  int landscape_offset;
+} kbd_t;
+
+// Keyboard sizes from
+// https://developer.palm.com/distribution/viewtopic.php?p=83407#p83407
+static kbd_t kbd_types[] =
+{
+  { "off",   0,   0},
+  { "xs",  243, 243},
+  { "s",   291, 291},
+  { "m",   340, 340},
+  { "l",   393, 393},
+};
+
+static const int MAX_KEYBOARD_TYPE = sizeof(kbd_types) / sizeof(kbd_types[0]);
 
 // Values from https://developer.palm.com/content/api/reference/pdk/pdl/pdl-get-hardware-id.html
 typedef enum {
@@ -308,7 +325,7 @@ static Bool sdlScreenInit(KdScreenInfo *screen)
   pdkVersion = PDL_GetPDKVersion();
   dprintf("PDK version: %d\n", pdkVersion);
   if (pdkVersion <= 300) {
-    use_keyboard = 0;
+    keyboard_type = 0;
     deviceOrientation = 0;
   }
 
@@ -316,10 +333,10 @@ static Bool sdlScreenInit(KdScreenInfo *screen)
   if (!updateOrientation(s->w, s->h))
     return FALSE;
 
+  dprintf("keyboard_type: %d\n", keyboard_type);
   // Only call PDL_SetKeyboardState if we want the keyboard
-  if (use_keyboard) {
-    dprintf("PDL_SetKeyboardState %d\n", use_keyboard );
-    PDL_SetKeyboardState( use_keyboard );
+  if (keyboard_type != 0) {
+    PDL_SetKeyboardState( 1 );
   }
 
   //Create buffer for rendering into
@@ -489,10 +506,39 @@ CloseInput (void)
 void ddxUseMsg(void)
 {
 	KdUseMsg();
+  ErrorF("\nXsdl Device Usage (webOS):\n");
+  ErrorF("-vkb vkb_type    What type of virtual keyboard to use (TP only).  Defaults to 'xs'.\n");
+  ErrorF("                 Valid values for -vkb:  off,xs,s,m,l\n");
+  ErrorF("\n");
 }
 
 int ddxProcessArgument(int argc, char **argv, int i)
 {
+  int j;
+  if (!strcmp(argv[i], "-vkb"))
+  {
+    keyboard_type = -1;
+
+    if (i + 1 < argc)
+    {
+      for(j = 0; j < MAX_KEYBOARD_TYPE; ++j)
+      {
+        if (!strcmp(argv[i+1], kbd_types[j].name))
+        {
+          keyboard_type = j;
+          return 2;
+        }
+      }
+    }
+
+    // If invalid type, or not enough arguments...
+    if (keyboard_type == -1)
+    {
+      UseMsg();
+      exit(1);
+    }
+  }
+
 	return KdProcessArgument(argc, argv, i);
 }
 
@@ -854,14 +900,12 @@ Bool updateOrientation(int width, int height)
 
   effective_screen_height = screen_height;
 
-  if (use_keyboard)
-  {
-    // Change _effective_ height to accomodate keyboard
-    if (deviceOrientation % 180)
-      effective_screen_height -= PORTRAIT_KEYBOARD_OFFSET;
-    else
-      effective_screen_height -= LANDSCAPE_KEYBOARD_OFFSET;
-  }
+  // Change _effective_ height to accomodate keyboard
+  assert(keyboard_type >= 0 && keyboard_type < MAX_KEYBOARD_TYPE);
+  if (deviceOrientation % 180)
+    effective_screen_height -= kbd_types[keyboard_type].portrait_offset;
+  else
+    effective_screen_height -= kbd_types[keyboard_type].landscape_offset;
 
   return TRUE;
 }
