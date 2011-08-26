@@ -73,6 +73,11 @@ HARDWARE_TOUCHPAD = 601
 
 static int UseUnicode = 0;
 
+#define HP_BT_LEFT 18
+#define HP_BT_UP 19
+#define HP_BT_RIGHT 20
+#define HP_BT_DOWN 21
+
 typedef struct
 {
   long x1, x2, y1, y2;
@@ -140,6 +145,7 @@ void GL_Render( struct SdlGLESDriver * driver, UpdateRect_t U );
 void detectOrientation(void);
 Bool updateOrientation(int width, int height);
 void configureForHardware(void);
+int handleSpecialKeys(SDLKey key, int def);
 
 /*-----------------------------------------------------------------------------
  *  GL variables
@@ -626,6 +632,8 @@ void sdlTimer(void)
           // remap to 255.
           if (keyToPass == 1) // TAB
             keyToPass = 255;
+
+          keyToPass = handleSpecialKeys(event.key.keysym.sym, keyToPass);
         }
         else
         {
@@ -933,4 +941,32 @@ void configureForHardware(void)
   }
 
   dprintf("UseUnicode: %d\n", 1);
+}
+
+int handleSpecialKeys(SDLKey key, int def)
+{
+  // Special-case misc keys:
+  switch (key)
+  {
+    case SDLK_LCTRL:
+    case SDLK_RCTRL:
+      return 254;
+    case SDLK_LALT:
+    case SDLK_RALT:
+      return 253;
+    case HP_BT_LEFT:
+    case SDLK_LEFT:
+      return 252;
+    case HP_BT_UP:
+    case SDLK_UP:
+      return 251;
+    case HP_BT_RIGHT:
+    case SDLK_RIGHT:
+      return 250;
+    case HP_BT_DOWN:
+    case SDLK_DOWN:
+      return 249;
+    default:
+      return def;
+  }
 }
