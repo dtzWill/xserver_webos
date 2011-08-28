@@ -713,6 +713,17 @@ void sdlTimer(void)
       case SDL_QUIT:
         /* this should never happen */
         SDL_Quit();
+        break;
+      case SDL_ACTIVEEVENT:
+        // Anytime the app gets focus, make sure we re-set the keyboard state.
+        // Hopefully this fixes issues caused by device sleeping causing keyboard
+        // to disappear.
+        if (keyboard_type != 0) {
+          PDL_SetKeyboardState( 1 );
+        }
+        break;
+      default:
+        break;
     }
   }
 }
