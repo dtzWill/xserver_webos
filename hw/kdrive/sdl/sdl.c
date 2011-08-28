@@ -30,6 +30,10 @@
 #include <SDL/SDL.h>
 #include <X11/keysym.h>
 
+#ifdef RANDR
+#include "randrstr.h"
+#endif
+
 #include <SDL/SDL_video.h>
 #include <SDL/SDL_opengles.h>
 #include "esFunc.h"
@@ -277,6 +281,7 @@ struct SdlGLESDriver
     char * buffer;
     int width;
     int height;
+    Rotation randr;
 };
 
 
@@ -365,6 +370,8 @@ static Bool sdlScreenInit(KdScreenInfo *screen)
   screen->fb.frameBuffer=(CARD8 *)sdlGLESDriver->buffer;
   SDL_WM_SetCaption("Freedesktop.org X server (SDLGLES)", NULL);
 
+  sdlGLESDriver->randr = screen->randr;
+
   GL_Init();
   GL_InitTexture( sdlGLESDriver );
 
@@ -414,18 +421,69 @@ static Bool sdlCreateRes(ScreenPtr pScreen)
 	return TRUE;
 }
 
+
+#ifdef RANDR
+static Bool sdlRandRGetInfo(ScreenPtr pScreen, Rotation *rotations)
+{
+  KdScreenPriv(pScreen);
+  KdScreenInfo *screen = pScreenPriv->screen;
+  struct SdlGLESDriver *scrpriv = screen->driver;
+  RRScreenSizePtr pSize;
+  Rotation randr;
+  int n;
+
+  // TODO: RR_Rotate_All|RR_Reflect_All;
+  //       For now, we don't suport any rotations/reflections
+  *rotations = RR_Rotate_0;
+
+  for (n = 0; n < pScreen->numDepths; n++)
+    if (pScreen->allowedDepths[n].numVids)
+      break;
+  if (n == pScreen->numDepths)
+    return FALSE;
+
+  pSize = RRRegisterSize (pScreen,
+      screen->width,
+      screen->height,
+      screen->width_mm,
+      screen->height_mm);
+
+  randr = KdSubRotation (scrpriv->randr, screen->randr);
+
+  RRSetCurrentConfig (pScreen, randr, 0, pSize);
+
+  return TRUE;
+}
+
+static Bool sdlRandRInit(ScreenPtr pScreen)
+{
+  rrScrPrivPtr    pScrPriv;
+
+  if (!RRScreenInit (pScreen))
+    return FALSE;
+
+  pScrPriv = rrGetScrPriv(pScreen);
+  pScrPriv->rrGetInfo = sdlRandRGetInfo;
+
+  // TODO: For now, we don't support setting anything.
+  //pScrPriv->rrSetConfig = sdlRandRSetConfig;
+  return TRUE;
+}
+#endif
+
+
 static Bool sdlFinishInitScreen(ScreenPtr pScreen)
 {
-	if (!shadowSetup (pScreen))
-		return FALSE;
-		
-/*
+  if (!shadowSetup (pScreen))
+    return FALSE;
+
+
 #ifdef RANDR
-	if (!sdlRandRInit (pScreen))
-		return FALSE;
+  if (!sdlRandRInit (pScreen))
+    return FALSE;
 #endif
-*/
-	return TRUE;
+
+  return TRUE;
 }
 
 static void sdlKeyboardFini(KdKeyboardInfo *ki)
