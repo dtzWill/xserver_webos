@@ -346,7 +346,7 @@ fbdevMapFramebuffer (KdScreenInfo *screen)
     KdSetPointerMatrix (&m);
 
     screen->width = priv->var.xres;
-    if (use_keyboard)
+    if (keyboard_type != 0)
       screen->height = priv->var.yres - 250; // Room for keyboard...
 
     if (scrpriv->shadow)

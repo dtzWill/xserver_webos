@@ -19,7 +19,7 @@
  * PERFORMANCE OF THIS SOFTWARE.
  *
  * It's really not my fault - see it was the elephants!!
- * 	- jaymz
+ *   - jaymz
  *
  */
 #ifdef HAVE_CONFIG_H
@@ -37,7 +37,7 @@
 static int screen_width = -1, screen_height = -1;
 static int effective_screen_height = -1;
 
-static int keyboard_type = 1; // xs, see below
+int keyboard_type = 1; // xs, see below
 
 typedef struct
 {
@@ -267,7 +267,7 @@ KdCardFuncs sdlFuncs = {
   fbdevInitScreen,        /* initScreen */
   fbdevFinishInitScreen,  /* finishInitScreen */
   fbdevCreateResources,   /* createRes */
-  fbdevPreserve           /* preserve */
+  fbdevPreserve,          /* preserve */
   fbdevEnable,            /* enable */
   fbdevDPMS,              /* dpms */
   fbdevDisable,           /* disable */
@@ -303,7 +303,6 @@ struct SdlGLESDriver
 
 static Bool sdlScreenInit(KdScreenInfo *screen)
 {
-  struct SdlGLESDriver *sdlGLESDriver=calloc(1, sizeof(struct SdlGLESDriver));
   SDL_Surface * s = NULL;
   int pdkVersion;
 
@@ -454,7 +453,7 @@ CloseInput (void)
 
 void ddxUseMsg(void)
 {
-	KdUseMsg();
+  KdUseMsg();
   ErrorF("\nXsdl Device Usage (webOS):\n");
   ErrorF("-vkb vkb_type    What type of virtual keyboard to use (TP only).  Defaults to 'xs'.\n");
   ErrorF("                 Valid values for -vkb:  off,xs,s,m,l\n");
@@ -463,9 +462,9 @@ void ddxUseMsg(void)
 
 int ddxProcessArgument(int argc, char **argv, int i)
 {
+  int j;
   fbdevDevicePath = "/dev/fb1";
 
-  int j;
   if (!strcmp(argv[i], "-vkb"))
   {
     keyboard_type = -1;
@@ -490,7 +489,7 @@ int ddxProcessArgument(int argc, char **argv, int i)
     }
   }
 
-	return KdProcessArgument(argc, argv, i);
+  return KdProcessArgument(argc, argv, i);
 }
 
 void sdlTimer(void)

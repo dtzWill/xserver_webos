@@ -51,7 +51,7 @@ typedef struct _fbdevScrPriv {
 extern KdCardFuncs  fbdevFuncs;
 extern char*        fbdevDevicePath;
 
-extern int use_keyboard;
+extern int keyboard_type;
 
 Bool
 fbdevCardInit (KdCardInfo *card);
