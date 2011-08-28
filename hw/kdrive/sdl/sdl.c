@@ -721,6 +721,9 @@ void sdlTimer(void)
         if (keyboard_type != 0) {
           PDL_SetKeyboardState( 1 );
         }
+
+        // Noisy for now, but should help debugging JIC this doesn't fix it.
+        fprintf(stderr, "Xsdl: Active event!\n");
         break;
       default:
         break;
