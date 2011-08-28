@@ -37,12 +37,46 @@
 static int screen_width = -1, screen_height = -1;
 static int effective_screen_height = -1;
 
-int use_keyboard = 1;
+static int keyboard_type = 1; // xs, see below
 
-#define PORTRAIT_KEYBOARD_OFFSET 250
-#define LANDSCAPE_KEYBOARD_OFFSET 250
+typedef struct
+{
+  char * name;
+  int portrait_offset;
+  int landscape_offset;
+} kbd_t;
 
-static const int TOUCHPAD = 1;
+// Keyboard sizes from
+// https://developer.palm.com/distribution/viewtopic.php?p=83407#p83407
+static kbd_t kbd_types[] =
+{
+  { "off",   0,   0},
+  { "xs",  243, 243},
+  { "s",   291, 291},
+  { "m",   340, 340},
+  { "l",   393, 393},
+};
+
+static const int MAX_KEYBOARD_TYPE = sizeof(kbd_types) / sizeof(kbd_types[0]);
+
+// Values from https://developer.palm.com/content/api/reference/pdk/pdl/pdl-get-hardware-id.html
+typedef enum {
+HARDWARE_UNKNOWN  =  -1,
+HARDWARE_PRE      = 101,
+HARDWARE_PRE_PLUS = 102,
+HARDWARE_PIXI     = 201,
+HARDWARE_VEER     = 301,
+HARDWARE_PRE_2    = 401,
+HARDWARE_PRE_3    = 501,
+HARDWARE_TOUCHPAD = 601
+} Hardware_t;
+
+static int UseUnicode = 0;
+
+#define HP_BT_LEFT 18
+#define HP_BT_UP 19
+#define HP_BT_RIGHT 20
+#define HP_BT_DOWN 21
 
 typedef struct
 {
@@ -56,6 +90,7 @@ extern void PDL_SetOrientation( int orientation );
 extern void PDL_Init( char unused );
 extern void PDL_SetKeyboardState(int visible);
 extern int  PDL_GetPDKVersion(void);
+extern int  PDL_GetHardwareID(void);
 
  /* the action button below the screen */
 #define PDL_ORIENTATION_0 0
@@ -109,6 +144,8 @@ void GL_Render( struct SdlGLESDriver * driver, UpdateRect_t U );
 
 void detectOrientation(void);
 Bool updateOrientation(int width, int height);
+void configureForHardware(void);
+int handleSpecialKeys(SDLKey key, int def);
 
 /*-----------------------------------------------------------------------------
  *  GL variables
@@ -289,7 +326,9 @@ static Bool sdlScreenInit(KdScreenInfo *screen)
     return FALSE;
   }
 
-  if (TOUCHPAD)
+  configureForHardware();
+
+  if (UseUnicode)
     SDL_EnableUNICODE( SDL_ENABLE );
 
   dprintf("Calling SDL_SetVideoMode...\n");
@@ -314,7 +353,7 @@ static Bool sdlScreenInit(KdScreenInfo *screen)
   pdkVersion = PDL_GetPDKVersion();
   dprintf("PDK version: %d\n", pdkVersion);
   if (pdkVersion <= 300) {
-    use_keyboard = 0;
+    keyboard_type = 0;
     deviceOrientation = 0;
   }
 
@@ -322,10 +361,10 @@ static Bool sdlScreenInit(KdScreenInfo *screen)
   if (!updateOrientation(s->w, s->h))
     return FALSE;
 
+  dprintf("keyboard_type: %d\n", keyboard_type);
   // Only call PDL_SetKeyboardState if we want the keyboard
-  if (use_keyboard) {
-    dprintf("PDL_SetKeyboardState %d\n", use_keyboard );
-    PDL_SetKeyboardState( use_keyboard );
+  if (keyboard_type != 0) {
+    PDL_SetKeyboardState( 1 );
   }
 
   // Forward to fbdev's impl
@@ -415,14 +454,43 @@ CloseInput (void)
 
 void ddxUseMsg(void)
 {
-  KdUseMsg();
+	KdUseMsg();
+  ErrorF("\nXsdl Device Usage (webOS):\n");
+  ErrorF("-vkb vkb_type    What type of virtual keyboard to use (TP only).  Defaults to 'xs'.\n");
+  ErrorF("                 Valid values for -vkb:  off,xs,s,m,l\n");
+  ErrorF("\n");
 }
 
 int ddxProcessArgument(int argc, char **argv, int i)
 {
   fbdevDevicePath = "/dev/fb1";
 
-  return KdProcessArgument(argc, argv, i);
+  int j;
+  if (!strcmp(argv[i], "-vkb"))
+  {
+    keyboard_type = -1;
+
+    if (i + 1 < argc)
+    {
+      for(j = 0; j < MAX_KEYBOARD_TYPE; ++j)
+      {
+        if (!strcmp(argv[i+1], kbd_types[j].name))
+        {
+          keyboard_type = j;
+          return 2;
+        }
+      }
+    }
+
+    // If invalid type, or not enough arguments...
+    if (keyboard_type == -1)
+    {
+      UseMsg();
+      exit(1);
+    }
+  }
+
+	return KdProcessArgument(argc, argv, i);
 }
 
 void sdlTimer(void)
@@ -500,7 +568,7 @@ void sdlTimer(void)
       case SDL_KEYDOWN:
       case SDL_KEYUP:
 
-        if (TOUCHPAD)
+        if (UseUnicode)
         {
           // On touchpad, send the raw unicode value.
           keyToPass = event.key.keysym.unicode;
@@ -509,6 +577,8 @@ void sdlTimer(void)
           // remap to 255.
           if (keyToPass == 1) // TAB
             keyToPass = 255;
+
+          keyToPass = handleSpecialKeys(event.key.keysym.sym, keyToPass);
         }
         else
         {
@@ -658,14 +728,65 @@ Bool updateOrientation(int width, int height)
 
   effective_screen_height = screen_height;
 
-  if (use_keyboard)
-  {
-    // Change _effective_ height to accomodate keyboard
-    if (deviceOrientation % 180)
-      effective_screen_height -= PORTRAIT_KEYBOARD_OFFSET;
-    else
-      effective_screen_height -= LANDSCAPE_KEYBOARD_OFFSET;
-  }
+  // Change _effective_ height to accomodate keyboard
+  assert(keyboard_type >= 0 && keyboard_type < MAX_KEYBOARD_TYPE);
+  if (deviceOrientation % 180)
+    effective_screen_height -= kbd_types[keyboard_type].portrait_offset;
+  else
+    effective_screen_height -= kbd_types[keyboard_type].landscape_offset;
 
   return TRUE;
+}
+
+void configureForHardware(void)
+{
+
+  // Check if the hardware is a touchpad.
+  // If so, switch to unicode encoding of keyboard events,
+  // because (for example) we don't get SDL events for shift keys
+  // and the like, so the keyboard we're presenting doesn't have
+  // the usual (normal keys)x(modifiers) configuration.
+
+  // This method should work on other devices as well for the most part,
+  // however all 'special' efforts in the mappings such as support
+  // for sticky modifiers, arrows, etc, _won't_ work, so for now
+  // we use this method just for the touchpad.
+
+  int pdkVersion = PDL_GetPDKVersion();
+  // PDL_GetHardwareID only exists on PDK version >= 200
+  if (pdkVersion >= 200) {
+    Hardware_t H = PDL_GetHardwareID();
+    if (H == HARDWARE_TOUCHPAD)
+      UseUnicode = 1;
+  }
+
+  dprintf("UseUnicode: %d\n", 1);
+}
+
+int handleSpecialKeys(SDLKey key, int def)
+{
+  // Special-case misc keys:
+  switch (key)
+  {
+    case SDLK_LCTRL:
+    case SDLK_RCTRL:
+      return 254;
+    case SDLK_LALT:
+    case SDLK_RALT:
+      return 253;
+    case HP_BT_LEFT:
+    case SDLK_LEFT:
+      return 252;
+    case HP_BT_UP:
+    case SDLK_UP:
+      return 251;
+    case HP_BT_RIGHT:
+    case SDLK_RIGHT:
+      return 250;
+    case HP_BT_DOWN:
+    case SDLK_DOWN:
+      return 249;
+    default:
+      return def;
+  }
 }
