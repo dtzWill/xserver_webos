@@ -145,7 +145,7 @@ int MaxClients = 0;
 Bool NewOutputPending;		/* not yet attempted to write some new output */
 Bool AnyClientsWriteBlocked;	/* true if some client blocked on write */
 
-static Bool RunFromSmartParent;	/* send SIGUSR1 to parent process */
+static Bool RunFromSmartParent = TRUE;	/* send SIGUSR1 to parent process */
 Bool PartialNetwork;	/* continue even if unable to bind all addrs */
 static Pid_t ParentProcess;
 
@@ -342,7 +342,7 @@ InitParentProcess(void)
     OsSigHandlerPtr handler;
     handler = OsSignal (SIGUSR1, SIG_IGN);
     if ( handler == SIG_IGN)
-	RunFromSmartParent = TRUE;
+      RunFromSmartParent = TRUE;
     OsSignal(SIGUSR1, handler);
     ParentProcess = getppid ();
 #endif
@@ -352,11 +352,11 @@ void
 NotifyParentProcess(void)
 {
 #if !defined(WIN32)
-    if (RunFromSmartParent) {
-	if (ParentProcess > 1) {
-	    kill (ParentProcess, SIGUSR1);
-	}
+  if (RunFromSmartParent) {
+    if (ParentProcess > 1) {
+      kill (ParentProcess, SIGUSR1);
     }
+  }
 #endif
 }
 
