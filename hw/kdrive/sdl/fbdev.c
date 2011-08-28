@@ -346,8 +346,11 @@ fbdevMapFramebuffer (KdScreenInfo *screen)
     KdSetPointerMatrix (&m);
 
     screen->width = priv->var.xres;
-    if (keyboard_type != 0)
-      screen->height = priv->var.yres - 250; // Room for keyboard...
+
+    assert(keyboard_type >= 0 && keyboard_type < MAX_KEYBOARD_TYPE);
+    // Since portrait/landscape are same, just using portrait offset
+    // to simplify code here.
+    screen->height = priv->var.yres - kbd_types[keyboard_type].portrait_offset;
 
     if (scrpriv->shadow)
     {

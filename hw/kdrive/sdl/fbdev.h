@@ -53,6 +53,26 @@ extern char*        fbdevDevicePath;
 
 extern int keyboard_type;
 
+typedef struct
+{
+  char * name;
+  int portrait_offset;
+  int landscape_offset;
+} kbd_t;
+
+// Keyboard sizes from
+// https://developer.palm.com/distribution/viewtopic.php?p=83407#p83407
+static kbd_t kbd_types[] =
+{
+  { "off",   0,   0},
+  { "xs",  243, 243},
+  { "s",   291, 291},
+  { "m",   340, 340},
+  { "l",   393, 393},
+};
+
+static const int MAX_KEYBOARD_TYPE = sizeof(kbd_types) / sizeof(kbd_types[0]);
+
 Bool
 fbdevCardInit (KdCardInfo *card);
 
