@@ -355,7 +355,7 @@ static Bool sdlScreenInit(KdScreenInfo *screen)
 
   screen->width = screen_width;
   screen->height = effective_screen_height;
-  screen->fb.depth = 32;
+  screen->fb.depth = 24;
   screen->fb.visuals=(1<<TrueColor);
   screen->fb.redMask=redMask;
   screen->fb.greenMask=greenMask;
