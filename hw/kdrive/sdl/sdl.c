@@ -221,12 +221,10 @@ int deviceOrientation = 0; // 0, 90, 180, 270
 
 GLushort indices[] = { 0, 1, 2, 1, 2, 3 };
 
-//We're using 24 bitdepth, each color has it's own byte
-//Note that the screen still is 32bit, but we use 24bit so we can upload
-//as a texture more easily (no reason to introduce alpha)
-int redMask = 0x0000ff;
-int greenMask = 0x00ff00;
-int blueMask = 0xff0000;
+// 32bit RGBA
+int redMask   = 0x000000ff;
+int greenMask = 0x0000ff00;
+int blueMask  = 0x00ff0000;
 
 static void xsdlFini(void);
 static Bool sdlScreenInit(KdScreenInfo *screen);
@@ -351,21 +349,21 @@ static Bool sdlScreenInit(KdScreenInfo *screen)
   }
 
   //Create buffer for rendering into
-  sdlGLESDriver->buffer = malloc( screen_width * screen_height *24 / 8 );
+  sdlGLESDriver->buffer = malloc( screen_width * screen_height *32 / 8 );
   sdlGLESDriver->width = screen_width;
   sdlGLESDriver->height = screen_height;
 
   screen->width = screen_width;
   screen->height = effective_screen_height;
-  screen->fb.depth= 24;
+  screen->fb.depth = 32;
   screen->fb.visuals=(1<<TrueColor);
   screen->fb.redMask=redMask;
   screen->fb.greenMask=greenMask;
   screen->fb.blueMask=blueMask;
-  screen->fb.bitsPerPixel= 24;
+  screen->fb.bitsPerPixel= 32;
   screen->rate=60;
   screen->driver=sdlGLESDriver;
-  screen->fb.byteStride=(screen_width*24)/8;
+  screen->fb.byteStride=(screen_width*32)/8;
   screen->fb.pixelStride=screen_width;
   screen->fb.frameBuffer=(CARD8 *)sdlGLESDriver->buffer;
   SDL_WM_SetCaption("Freedesktop.org X server (SDLGLES)", NULL);
@@ -850,8 +848,8 @@ void GL_InitTexture( struct SdlGLESDriver * driver )
     glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE );
     checkError();
 
-    glTexImage2D( GL_TEXTURE_2D, 0, GL_RGB, driver->width, driver->height,
-            0, GL_RGB, GL_UNSIGNED_BYTE, NULL );
+    glTexImage2D( GL_TEXTURE_2D, 0, GL_RGBA, driver->width, driver->height,
+            0, GL_RGBA, GL_UNSIGNED_BYTE, NULL );
     checkError();
 }
 
@@ -891,10 +889,10 @@ void GL_Render( struct SdlGLESDriver * driver, UpdateRect_t U )
     // c)I'm unclear on what the lifetime of the temporary packed data would be
 
     // Informally, just sending updated lines is already much faster.
-    buf = driver->buffer + U.y1 * driver->width * 3;
+    buf = driver->buffer + U.y1 * driver->width * 4;
     glTexSubImage2D( GL_TEXTURE_2D, 0,
             0, U.y1, driver->width, U.y2 - U.y1,
-            GL_RGB, GL_UNSIGNED_BYTE, buf );
+            GL_RGBA, GL_UNSIGNED_BYTE, buf );
 #endif
     checkError();
 
