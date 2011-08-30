@@ -779,7 +779,9 @@ void GL_Init(void)
         "uniform sampler2D s_texture;                        \n"
         "void main()                                         \n"
         "{                                                   \n"
-        "  gl_FragColor = texture2D( s_texture, v_texCoord );\n"
+        "  vec4 color = texture2D( s_texture, v_texCoord );  \n"
+        "  gl_FragColor.rgb = color.rgb;                     \n"
+        "  gl_FragColor.a = 1.0;                             \n"
         "}                                                   \n";
 
     // setup 2D gl environment
@@ -794,6 +796,9 @@ void GL_Init(void)
     glDepthFunc( GL_ALWAYS );
     checkError();
     glDisable(GL_CULL_FACE);
+    checkError();
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glEnable(GL_BLEND);
     checkError();
 
     // Load the shaders and get a linked program object
