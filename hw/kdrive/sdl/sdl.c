@@ -109,8 +109,10 @@ extern int  PDL_GetHardwareID(void);
 //#define DEBUG
 
 #ifdef DEBUG_GL
-static void checkError()
+static void checkError(void)
 {
+    char * sdl_error;
+
     /* Check for error conditions. */
     GLenum gl_error = glGetError( );
 
@@ -120,7 +122,7 @@ static void checkError()
         exit( 1 );
     }
 
-    char * sdl_error = SDL_GetError( );
+    sdl_error = SDL_GetError( );
 
     if( sdl_error[0] != '\0' ) {
         fprintf(stderr, "X sdlgl: SDL error '%s'\n", sdl_error);
@@ -761,7 +763,7 @@ void OsVendorInit (void)
  *-----------------------------------------------------------------------------*/
 void GL_Init(void)
 {
-    static GLbyte vShaderStr[] =  
+    static GLbyte vShaderStr[] =
         "attribute vec4 a_position;   \n"
         "attribute vec2 a_texCoord;   \n"
         "varying vec2 v_texCoord;     \n"
@@ -771,7 +773,7 @@ void GL_Init(void)
         "   v_texCoord = a_texCoord;  \n"
         "}                            \n";
 
-    static GLbyte fShaderStr[] =  
+    static GLbyte fShaderStr[] =
         "precision mediump float;                            \n"
         "varying vec2 v_texCoord;                            \n"
         "uniform sampler2D s_texture;                        \n"
@@ -785,7 +787,10 @@ void GL_Init(void)
     glClearColor( 0.0f, 0.0f, 0.0f, 1.0f );//black background
     checkError();
 
+    glDisable(GL_STENCIL_TEST);
+    checkError();
     glDisable(GL_DEPTH_TEST);
+    checkError();
     glDepthFunc( GL_ALWAYS );
     checkError();
     glDisable(GL_CULL_FACE);
@@ -794,6 +799,7 @@ void GL_Init(void)
     // Load the shaders and get a linked program object
     programObject = esLoadProgram ( ( char *)vShaderStr, (char *)fShaderStr );
     checkError();
+    assert(programObject && "load program failed!");
 
     // Get the attribute locations
     positionLoc = glGetAttribLocation ( programObject, "a_position" );
