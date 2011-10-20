@@ -928,21 +928,17 @@ void GL_Render( struct SdlGLESDriver * driver, UpdateRect_t U )
 
 void detectOrientation(void)
 {
-  int timeout;
   SDL_Joystick *joystick;
   Sint16 xAxis, yAxis, zAxis;
 
   // Read the current accellerometer values
   joystick = SDL_JoystickOpen(0);
-  xAxis = 0; yAxis = 0; zAxis = 0; timeout = 0;
-  while (!xAxis && !yAxis && !zAxis && (timeout < 30)) {
-    usleep(100000); // Sample at 10 times per second
-    xAxis = SDL_JoystickGetAxis(joystick, 0);
-    yAxis = SDL_JoystickGetAxis(joystick, 1);
-    zAxis = SDL_JoystickGetAxis(joystick, 2);
-    dprintf("Sample orientation: %d %d %d\n", xAxis, yAxis, zAxis);
-    timeout += 1;
-  }
+
+  SDL_PumpEvents();
+  xAxis = SDL_JoystickGetAxis(joystick, 0);
+  yAxis = SDL_JoystickGetAxis(joystick, 1);
+  zAxis = SDL_JoystickGetAxis(joystick, 2);
+  dprintf("Sample orientation: %d %d %d\n", xAxis, yAxis, zAxis);
   SDL_JoystickClose(joystick);
 
   // Convert it into a device orientation using some heuristics
