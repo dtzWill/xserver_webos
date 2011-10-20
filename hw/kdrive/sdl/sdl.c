@@ -686,8 +686,13 @@ void sdlTimer(void)
           // On touchpad, send the raw unicode value.
           keyToPass = event.key.keysym.unicode;
 
-          // '1' is outside valid range of 8->255,
-          // remap to 255.
+          // Two notes.
+          // 1)I have no idea why 'tab' ever mapped to unicode '1'.
+          // 2)This should be unnecessary now since we check keysym.sym in
+          //   handleSpecialKeys, however until I verify this new code still
+          //   works on a 3.0.2 device I'm leaving this be.  The loss is that
+          //   users cannot enter 'Start of Heading' characters, which I
+          //   think is an acceptable risk :).
           if (keyToPass == 1) // TAB
             keyToPass = 255;
 
@@ -1029,6 +1034,8 @@ int handleSpecialKeys(SDLKey key, int def)
   // Special-case misc keys:
   switch (key)
   {
+    case SDLK_TAB:
+      return 255;
     case SDLK_LCTRL:
     case SDLK_RCTRL:
       return 254;
