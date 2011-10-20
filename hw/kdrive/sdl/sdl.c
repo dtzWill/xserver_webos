@@ -108,6 +108,8 @@ extern int  PDL_GetHardwareID(void);
 // DISMISS keyboard event, introduced in 3.0.2
 // ( https://developer.palm.com/content/api/release-notes/3.0.2-652.html )
 #define PDLK_GESTURE_DISMISS_KEYBOARD 24
+// Experimentally determined on a device running 3.0.4
+#define PDLK_VKB_EURO 8364
 
 //#define DEBUG_GL
 //#define DEBUG
@@ -1055,6 +1057,8 @@ int handleSpecialKeys(SDLKey key, int def)
     case HP_BT_DOWN:
     case SDLK_DOWN:
       return 249;
+    case PDLK_VKB_EURO:
+      return 248;
     default:
       return def;
   }
