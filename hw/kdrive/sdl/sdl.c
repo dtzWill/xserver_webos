@@ -105,6 +105,10 @@ extern int  PDL_GetHardwareID(void);
 /* the action button to the right of the screen */
 #define PDL_ORIENTATION_270 3
 
+// DISMISS keyboard event, introduced in 3.0.2
+// ( https://developer.palm.com/content/api/release-notes/3.0.2-652.html )
+#define PDLK_GESTURE_DISMISS_KEYBOARD 24
+
 //#define DEBUG_GL
 //#define DEBUG
 
@@ -1036,6 +1040,7 @@ int handleSpecialKeys(SDLKey key, int def)
   {
     case SDLK_TAB:
       return 255;
+    case PDLK_GESTURE_DISMISS_KEYBOARD:
     case SDLK_LCTRL:
     case SDLK_RCTRL:
       return 254;
