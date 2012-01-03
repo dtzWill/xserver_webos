@@ -736,24 +736,24 @@ void sdlTimer(void)
         if(event.button.which != num_fingers_down - 1)
           break;
 
-        // Generate mouse-down event at this location if not in drag mode
+        // Generate mouse-down event at original location if not in drag mode
         if (!clickDrag) {
           switch (deviceOrientation) {
             case 0:
               KdEnqueuePointerEvent(sdlPointer, mouseState,
-                  event.button.x, event.button.y, 0);
+                  startX, startY, 0);
               break;
             case 90:
               KdEnqueuePointerEvent(sdlPointer, mouseState,
-                  screen_width - event.button.y, event.button.x, 0);
+                  screen_width - startY, startX, 0);
               break;
             case 180:
               KdEnqueuePointerEvent(sdlPointer, mouseState,
-                  screen_width - event.button.x, screen_height - event.button.y, 0);
+                  screen_width - startX, screen_height - startY, 0);
               break;
             case 270:
               KdEnqueuePointerEvent(sdlPointer, mouseState,
-                  event.button.y, screen_height - event.button.x, 0);
+                  startY, screen_height - startX, 0);
               break;
             default:
               // Do nothing
