@@ -63,6 +63,10 @@ static kbd_t kbd_types[] =
 
 static const int MAX_KEYBOARD_TYPE = sizeof(kbd_types) / sizeof(kbd_types[0]);
 
+// Distance, in pixels, required to distinguish a tap from a drag.
+// This is non-zero due to noise from human 'error' and perhaps the screen also
+static const int DRAG_THRESHOLD = 10;
+
 // Values from https://developer.palm.com/content/api/reference/pdk/pdl/pdl-get-hardware-id.html
 typedef enum {
 HARDWARE_UNKNOWN  =  -1,
@@ -618,7 +622,6 @@ void sdlTimer(void)
   static int dragDiffX,dragDiffY,startX,startY;
   static int whichFinger;
   static int clickDrag;
-  //static int buttonState=0;
   int keyToPass;
   SDL_Event event;
   SDL_ShowCursor(FALSE);
@@ -635,34 +638,28 @@ void sdlTimer(void)
     switch (event.type) {
       //Only deals with Left Click and Drag (first finger down)
       case SDL_MOUSEMOTION:
-	//break if the motion occures with more then 1 finger down.	
+        //break if the motion occurs with more then 1 finger down.
         if (whichFinger != 0)
-	break;
-        //fprintf(stderr, "Which from mouse motion %i\n",event.button.which);
-	//Break if the motion comes from finger other then the first one.
+          break;
+        //Break if the motion comes from finger other then the first one.
         if (event.button.which != 0)
-	break;
+          break;
 
-        //fprintf(stderr, "Motionstart whichfinger %i\n",whichFinger);
-        //fprintf(stderr, "startX%i startY %i\n",startX,startY);
-	//Catch first click and ignore due to click and drag action first time	
-	if ((startX == 0) & (startY == 0))
-	break;
-	//Determine drag value
+        //Catch first click and ignore due to click and drag action first time
+        if ((startX == 0) & (startY == 0))
+          break;
+        //Determine drag value
         dragDiffX = event.motion.x-startX;
-	dragDiffY = event.motion.y-startY;
-	
-        //fprintf(stderr, "dragDiffX %i dragDiffY %i\n",dragDiffX,dragDiffY);
-	//Disregard any motion less then 10 pixels (noise from tapping)
-	if (sqrt((dragDiffX*dragDiffX)+(dragDiffY*dragDiffY))<10)
-	break;
+        dragDiffY = event.motion.y-startY;
 
-        //fprintf(stderr, "outside of the 10 pixel radius");
-	//Click and Drag flag used in button up  
-	clickDrag=1;
-        //fprintf(stderr, "Motion mouseState %i",mouseState);
-       	//fprintf(stderr, "Drag MouseState Value:%d\n Drag whichFinger Down: %i\n",mouseState,whichFinger);
-	//Drag Motion based on device Orientation
+        //Disregard any motion less then DRAG_THRESHOLD pixels (noise from tapping)
+        if ((dragDiffX*dragDiffX)+(dragDiffY*dragDiffY)< DRAG_THRESHOLD*DRAG_THRESHOLD)
+          break;
+
+        //Click and Drag flag used in button up  
+        clickDrag=1;
+
+        //Drag Motion based on device Orientation
         switch (deviceOrientation) {
           case 0:
             KdEnqueuePointerEvent(sdlPointer, mouseState,
@@ -681,33 +678,31 @@ void sdlTimer(void)
                 event.motion.y, screen_height - event.motion.x, 0);
             break;
           default:
-            // Do nothing 
+            // Do nothing
             break;
         }
-	break;
+        break;
+
       //Button down only sets the mouseState but does not trigger mouse down action.
       case SDL_MOUSEBUTTONDOWN:
-	//fprintf(stderr, "Finger Down event\n");
-	//needed for dragDiff values
-	startX=event.button.x;	
-	startY=event.button.y;
-        //Used for finger up to only fire one mouseState  
-	whichFinger = event.button.which;	
-	//fprintf(stderr, "Whichfinger Down %i\n",whichFinger);
-	//Sets mouseState based on whichFinger is down.
-	switch(whichFinger)
+        //needed for dragDiff values
+        startX=event.button.x;
+        startY=event.button.y;
+
+        //Used for finger up to only fire one mouseState
+        whichFinger = event.button.which;
+        //Sets mouseState based on whichFinger is down.
+        switch(whichFinger)
         {
         /*Left click */
           case 0:
             mouseState = 1;
-            //buttonState=KD_BUTTON_1;
             break;
         /*Right click*/
           case 1:
             mouseState = 4;
-            //buttonState=KD_BUTTON_3;
             break;
-        /*Show Virtual Keyboard*/
+        /*Toggle Virtual Keyboard*/
            case 2:
             if (keyboardState) {
               PDL_SetKeyboardState(0);
@@ -716,55 +711,52 @@ void sdlTimer(void)
               PDL_SetKeyboardState(1);
               keyboardState=1;
                   }
-	      //set the whichFinger to a value not used in finger up
-	      whichFinger=-1;
+            //set the whichFinger to a value not used in finger up
+            whichFinger=-1;
             break;
           default:
             break;
         }
 
-	break;
+        break;
       // Emulates mousedown if no clickDrag was registered, then emulates mouseUp.
       case SDL_MOUSEBUTTONUP:
-	//fprintf(stderr, "Finger up Event\n");
-	//Only fire for finger up based on whichfinger flag
-  	if(event.button.which!=whichFinger)
-	  break;
-	//do not fire mouse click if drag motion since it has already been triggered
-  	if(!clickDrag){
-       	//fprintf(stderr, "Emulated MouseState Value Down:%d\n Emulate whichFinger Down: %i\n",mouseState,whichFinger);
-	 // Put mouse button at place of click for all orientations.
-	 switch (deviceOrientation) {
-          case 0:
-            KdEnqueuePointerEvent(sdlPointer, mouseState,
-                event.button.x, event.button.y, 0);
-            break;
-          case 90:
-            KdEnqueuePointerEvent(sdlPointer, mouseState,
-                screen_width - event.button.y, event.button.x, 0);
-            break;
-          case 180:
-            KdEnqueuePointerEvent(sdlPointer, mouseState,
-                screen_width - event.button.x, screen_height - event.button.y, 0);
-            break;
-          case 270:
-            KdEnqueuePointerEvent(sdlPointer, mouseState,
-                event.button.y, screen_height - event.button.x, 0);
-            break;
-          default:
-            // Do nothing 
-            break;
-         }	
+        //Only fire for finger up based on whichfinger flag
+        if(event.button.which!=whichFinger)
+          break;
+        //do not fire mouse click if drag motion since it has already been triggered
+        if(!clickDrag){
+          // Put mouse button at place of click for all orientations.
+          switch (deviceOrientation) {
+            case 0:
+              KdEnqueuePointerEvent(sdlPointer, mouseState,
+                  event.button.x, event.button.y, 0);
+              break;
+            case 90:
+              KdEnqueuePointerEvent(sdlPointer, mouseState,
+                  screen_width - event.button.y, event.button.x, 0);
+              break;
+            case 180:
+              KdEnqueuePointerEvent(sdlPointer, mouseState,
+                  screen_width - event.button.x, screen_height - event.button.y, 0);
+              break;
+            case 270:
+              KdEnqueuePointerEvent(sdlPointer, mouseState,
+                  event.button.y, screen_height - event.button.x, 0);
+              break;
+            default:
+              // Do nothing
+              break;
+          }
 
-	}
+        }
         //Set mousestate to 0 which means no buttons down(aka release) 
         mouseState = 0;
-	//fprintf(stderr, "Emulate MouseState Value Up:%d\nEmulate whichFinger Up: %i\n",mouseState,whichFinger);
         KdEnqueuePointerEvent(sdlPointer, mouseState|KD_MOUSE_DELTA, 0, 0, 0);
-	//reset clickDrag and WhichFinger Flag 
-	clickDrag=0;
-	whichFinger=-1;
-	break;
+        //reset clickDrag and WhichFinger Flag
+        clickDrag=0;
+        whichFinger=-1;
+        break;
       case SDL_KEYDOWN:
       case SDL_KEYUP:
 
