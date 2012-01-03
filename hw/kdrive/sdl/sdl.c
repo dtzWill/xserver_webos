@@ -654,7 +654,7 @@ void sdlTimer(void)
 
         // Also, only consider motion from the first finger
         // (TODO: When can this occur?)
-        if (event.button.which != 0)
+        if (event.motion.which != 0)
           break;
 
         // Drag handling:
