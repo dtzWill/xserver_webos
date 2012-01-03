@@ -169,6 +169,7 @@ void detectOrientation(void);
 Bool updateOrientation(int width, int height);
 void configureForHardware(void);
 int handleSpecialKeys(SDLKey key, int def);
+void mouseEvent(int x, int y, int state);
 
 /*-----------------------------------------------------------------------------
  *  GL variables
@@ -662,33 +663,20 @@ void sdlTimer(void)
           int dragDiffY = event.motion.y-startY;
 
           // We're in the 'drag' state if we've exceeded the DRAG_THRESHOLD
-          clickDrag |= (dragDiffX*dragDiffX) + (dragDiffY*dragDiffY) > DRAG_THRESHOLD*DRAG_THRESHOLD;
-
-          if (clickDrag) {
-
-            //Drag Motion based on device Orientation
-            switch (deviceOrientation) {
-              case 0:
-                KdEnqueuePointerEvent(sdlPointer, mouseState,
-                    event.motion.x, event.motion.y, 0);
-                break;
-              case 90:
-                KdEnqueuePointerEvent(sdlPointer, mouseState,
-                    screen_width - event.motion.y, event.motion.x, 0);
-                break;
-              case 180:
-                KdEnqueuePointerEvent(sdlPointer, mouseState,
-                    screen_width - event.motion.x, screen_height - event.motion.y, 0);
-                break;
-              case 270:
-                KdEnqueuePointerEvent(sdlPointer, mouseState,
-                    event.motion.y, screen_height - event.motion.x, 0);
-                break;
-              default:
-                // Do nothing
-                break;
-            }
+          if (!clickDrag &&
+              (dragDiffX*dragDiffX) + (dragDiffY*dragDiffY) > DRAG_THRESHOLD*DRAG_THRESHOLD) {
+            // We've just transitioned from 'waiting to see what happens'
+            // post-mousedown state into 'drag' mode.
+            // Accordingly, generated the delayed mousedown event
+            // This is important to have drag include original coordinates!
+            mouseEvent(startX, startY, mouseState);
+            clickDrag = 1;
           }
+
+          // Regardless or the above, if we're now in drag mode, move mouse
+          // to its new location using the existing mouseState.
+          if (clickDrag)
+            mouseEvent(event.motion.x, event.motion.y, mouseState);
         }
         break;
 
@@ -739,29 +727,8 @@ void sdlTimer(void)
           break;
 
         // Generate mouse-down event at original location if not in drag mode
-        if (!clickDrag) {
-          switch (deviceOrientation) {
-            case 0:
-              KdEnqueuePointerEvent(sdlPointer, mouseState,
-                  startX, startY, 0);
-              break;
-            case 90:
-              KdEnqueuePointerEvent(sdlPointer, mouseState,
-                  screen_width - startY, startX, 0);
-              break;
-            case 180:
-              KdEnqueuePointerEvent(sdlPointer, mouseState,
-                  screen_width - startX, screen_height - startY, 0);
-              break;
-            case 270:
-              KdEnqueuePointerEvent(sdlPointer, mouseState,
-                  startY, screen_height - startX, 0);
-              break;
-            default:
-              // Do nothing
-              break;
-          }
-        }
+        if (!clickDrag)
+          mouseEvent(startX, startY, mouseState);
 
         //Set mousestate to 0 which means no buttons down (aka release all)
         mouseState = 0;
@@ -1149,4 +1116,29 @@ int handleSpecialKeys(SDLKey key, int def)
     default:
       return def;
   }
+}
+
+void mouseEvent(int x, int y, int state) {
+  switch (deviceOrientation) {
+    case 0:
+      KdEnqueuePointerEvent(sdlPointer, state,
+          x, y, 0);
+      break;
+    case 90:
+      KdEnqueuePointerEvent(sdlPointer, state,
+          screen_width - y, x, 0);
+      break;
+    case 180:
+      KdEnqueuePointerEvent(sdlPointer, state,
+          screen_width - x, screen_height - y, 0);
+      break;
+    case 270:
+      KdEnqueuePointerEvent(sdlPointer, state,
+          y, screen_height - x, 0);
+      break;
+    default:
+      // Do nothing
+      break;
+  }
+
 }
