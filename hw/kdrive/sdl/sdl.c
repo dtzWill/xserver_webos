@@ -695,19 +695,21 @@ void sdlTimer(void)
       //Button down only sets the mouseState but does not trigger mouse down action.
       case SDL_MOUSEBUTTONDOWN:
 
+        // Ignore additional buttons down once dragging
+        if (clickDrag) break;
+
         num_fingers_down = event.button.which + 1;
+
         switch(num_fingers_down)
         {
         /*Left click */
           case 1:
-            mouseState = 1;
-            // We just saw the first finger down; this is not yet a drag event
-            clickDrag = 0;
-
             // Log location of mousedown, for determining when the finger has been
             // moved far enough to count as a drag event (versus tap)
             startX = event.button.x;
             startY = event.button.y;
+
+            mouseState = 1;
             break;
         /*Right click*/
           case 2:
@@ -765,9 +767,9 @@ void sdlTimer(void)
         mouseState = 0;
         KdEnqueuePointerEvent(sdlPointer, mouseState|KD_MOUSE_DELTA, 0, 0, 0);
 
-        // Reset num_fingers_down, since we're done.
-        // (TODO: Is this required?)
+        // Reset mouse state, we're done
         num_fingers_down = 0;
+        clickDrag = 0;
         break;
       case SDL_KEYDOWN:
       case SDL_KEYUP:
