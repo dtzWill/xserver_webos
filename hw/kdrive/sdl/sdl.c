@@ -75,15 +75,18 @@ static const int MAX_KEYBOARD_TYPE = sizeof(kbd_types) / sizeof(kbd_types[0]);
 static const int DRAG_THRESHOLD = 10;
 
 // Values from https://developer.palm.com/content/api/reference/pdk/pdl/pdl-get-hardware-id.html
+// HARDWARE_TOUCHPAD_GO isn't mentioned in the PDL_GetHardwareID spec, but here:
+// https://developer.palm.com/content/api/reference/pdk/pdl-data-types.html
 typedef enum {
-HARDWARE_UNKNOWN  =  -1,
-HARDWARE_PRE      = 101,
-HARDWARE_PRE_PLUS = 102,
-HARDWARE_PIXI     = 201,
-HARDWARE_VEER     = 301,
-HARDWARE_PRE_2    = 401,
-HARDWARE_PRE_3    = 501,
-HARDWARE_TOUCHPAD = 601
+HARDWARE_UNKNOWN     =  -1,
+HARDWARE_PRE         = 101,
+HARDWARE_PRE_PLUS    = 102,
+HARDWARE_PIXI        = 201,
+HARDWARE_VEER        = 301,
+HARDWARE_PRE_2       = 401,
+HARDWARE_PRE_3       = 501,
+HARDWARE_TOUCHPAD    = 601,
+HARDWARE_TOUCHPAD_GO = 701
 } Hardware_t;
 
 static int UseUnicode = 0;
@@ -1078,7 +1081,7 @@ void configureForHardware(void)
   // PDL_GetHardwareID only exists on PDK version >= 200
   if (pdkVersion >= 200) {
     Hardware_t H = PDL_GetHardwareID();
-    if (H == HARDWARE_TOUCHPAD)
+    if ((H == HARDWARE_TOUCHPAD) || (H == HARDWARE_TOUCHPAD_GO))
       UseUnicode = 1;
   }
 
